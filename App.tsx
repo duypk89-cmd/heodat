@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { AppTab, Expense, Category, FoodItem, ShoppingItem, WalletMode, SavingGoal, AppTheme, User } from './types';
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { AppTab, Expense, Category, ShoppingItem, WalletMode, SavingGoal, AppTheme, User } from './types';
 import { Navigation } from './components/Navigation';
 import { ExpenseForm } from './components/ExpenseForm';
 import { PiggyBank } from './components/PiggyBank';
 import { CATEGORY_ICONS, CATEGORY_COLORS } from './constants';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, CartesianGrid, XAxis } from 'recharts';
 import { getMarketHandbook, getShoppingAdvice, extractIngredients, analyzeSpending } from './services/geminiService';
 import { supabase } from './services/supabase';
 
-const STICKER_POOL = ['🍓', '🎀', '🍭', '🌸', '🧁', '🍦', '💎', '🌙', '🐱', '🦋', '🎈', '🎨'];
-const FOOD_STICKERS = ['🥦', '🥕', '🥩', '🥚', '🥛', '🍎', '🍋', '🍞', '🧀', '🍗', '🍤', '🥣'];
 const GOAL_ICONS = ['🎁', '🏖️', '🏠', '🚗', '📱', '💍', '🎓', '🍱', '🚲', '🎸', '✈️', '💄', '🧸', '🍰', '🐶', '🍕', '💻', '👠', '👜', '🕶️', '🧵', '📷', '⛺', '🏝️', '💒', '👶', '🏥', '🦷'];
 
 const GOAL_COLORS = [
@@ -21,14 +20,23 @@ const GOAL_COLORS = [
 ];
 
 const App: React.FC = () => {
+  // App State
+  const [isAppLoading, setIsAppLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [appTheme, setAppTheme] = useState<AppTheme>('pink');
+
+  // Data State
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [savingGoals, setSavingGoals] = useState<SavingGoal[]>([]);
+  
+  // UI State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
-  const [walletMode, setWalletMode] = useState<WalletMode>('personal');
+  const [showRewardOverlay, setShowRewardOverlay] = useState<string | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
   
+  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -37,53 +45,50 @@ const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [appTheme, setAppTheme] = useState<AppTheme>('pink');
-  const [showRewardOverlay, setShowRewardOverlay] = useState<string | null>(null);
-  const [showConfetti, setShowConfetti] = useState(false);
-  
-  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
-  const [isHandbookLoading, setIsHandbookLoading] = useState(false);
-  const [handbookContent, setHandbookContent] = useState<string | null>(null);
-
-  // Report & Analysis State
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  // Family Connection State
+  // Wallet & Family State
+  const [walletMode, setWalletMode] = useState<WalletMode>('personal');
+  const [weeklyBudget, setWeeklyBudget] = useState<number>(1500000);
+  const [familyBudget, setFamilyBudget] = useState<number>(15000000);
   const [partnerInfo, setPartnerInfo] = useState<User | null>(null);
   const [familyStatus, setFamilyStatus] = useState<'none' | 'pending' | 'connected'>('none');
   const [partnerEmailInput, setPartnerEmailInput] = useState('');
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [isLinkingLoading, setIsLinkingLoading] = useState(false);
 
-  // Tools Tab View State
+  // Feature Specific State
+  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  const [isHandbookLoading, setIsHandbookLoading] = useState(false);
+  const [handbookContent, setHandbookContent] = useState<string | null>(null);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const [selectedHandbookTopic, setSelectedHandbookTopic] = useState<'prices' | 'freshness' | 'recipes' | null>(null);
-
-  // New Goal State
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  // Inputs
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
-  const [newGoalIcon, setNewGoalIcon] = useState(GOAL_ICONS[0]); // Added state for icon selection
-
-  // Budget States
-  const [weeklyBudget, setWeeklyBudget] = useState<number>(1500000);
-  const [familyBudget, setFamilyBudget] = useState<number>(15000000);
-
-  // Saving Goals Form States
-  const [goalContributionInputs, setGoalContributionInputs] = useState<Record<string, string>>({});
-
-  // Shopping States
+  const [newGoalIcon, setNewGoalIcon] = useState(GOAL_ICONS[0]);
   const [newShoppingName, setNewShoppingName] = useState('');
   const [shoppingAdvice, setShoppingAdvice] = useState<string | null>(null);
+  const [goalContributionInputs, setGoalContributionInputs] = useState<Record<string, string>>({});
 
-  // ... (auth functions: handleLogin, handleRegister, handleLogout, effects)
+  // Helper for Vietnamese errors
+  const getFriendlyErrorMessage = (error: string) => {
+    if (error.includes("Invalid login credentials")) return "Email hoặc mật khẩu chưa đúng nha!";
+    if (error.includes("User already registered")) return "Email này đã được đăng ký rồi!";
+    if (error.includes("Password should be")) return "Mật khẩu hơi ngắn, thêm chút nữa đi!";
+    if (error.includes("rate limit")) return "Thử lại sau ít phút nhé Mây ơi!";
+    return "Có chút lỗi nhỏ: " + error;
+  };
+
+  // --- AUTH HANDLERS ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthLoading(true);
     setAuthError(null);
     const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-    if (error) setAuthError(error.message);
+    if (error) setAuthError(getFriendlyErrorMessage(error.message));
     setIsAuthLoading(false);
   };
 
@@ -96,12 +101,15 @@ const App: React.FC = () => {
       password: authPassword, 
       options: { data: { name: authName } } 
     });
+    
     if (authError) {
-      setAuthError(authError.message);
+      setAuthError(getFriendlyErrorMessage(authError.message));
       setIsAuthLoading(false);
       return;
     }
+
     if (authData.user) {
+      // Manual profile creation to ensure data exists immediately for the UI
       const { error: profileError } = await supabase.from('profiles').insert([{
         id: authData.user.id,
         email: authEmail,
@@ -109,7 +117,11 @@ const App: React.FC = () => {
         weekly_budget: 1500000,
         family_budget: 15000000
       }]);
-      if (profileError) console.error("Lỗi tạo profile:", profileError);
+      
+      if (profileError) {
+        console.error("Lỗi tạo profile:", profileError);
+      }
+      
       alert("Đăng ký thành công! Mây có thể đăng nhập ngay.");
       setIsRegistering(false);
     }
@@ -127,34 +139,45 @@ const App: React.FC = () => {
       setPartnerInfo(null);
       setWeeklyBudget(1500000);
       setFamilyBudget(15000000);
+      setWalletMode('personal');
+      setActiveTab('home');
     }
   };
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser({ id: session.user.id, email: session.user.email || '', name: session.user.user_metadata?.name || 'Mây' });
-      }
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser({ id: session.user.id, email: session.user.email || '', name: session.user.user_metadata?.name || 'Mây' });
-      } else {
-        setCurrentUser(null);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (currentUser) {
-      fetchUserData();
-      fetchFamilyConnection();
+  // --- DATA FETCHING ---
+  const fetchUserData = useCallback(async () => {
+    if (!currentUser) return;
+    
+    // Fetch Profile
+    const { data: profileData } = await supabase.from('profiles').select('weekly_budget, family_budget').eq('id', currentUser.id).single();
+    if (profileData) {
+      if (profileData.weekly_budget) setWeeklyBudget(profileData.weekly_budget);
+      if (profileData.family_budget) setFamilyBudget(profileData.family_budget);
     }
-  }, [currentUser]);
 
-  // ... (connection functions: fetchFamilyConnection, handleSendFamilyRequest, handleAcceptRequest, handleUnlink)
-  const fetchFamilyConnection = async () => {
+    // Fetch Expenses
+    let userIds = [currentUser.id];
+    if (partnerInfo && familyStatus === 'connected') userIds.push(partnerInfo.id);
+    const { data: expData } = await supabase.from('expenses').select('*').in('user_id', userIds).order('date', { ascending: false });
+    if (expData) setExpenses(expData.filter(e => e.user_id === currentUser.id || e.is_family));
+    
+    // Fetch Goals with Mapping snake_case -> camelCase
+    const { data: goalData } = await supabase.from('saving_goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    if (goalData) {
+      const mappedGoals = goalData.map((g: any) => ({
+        ...g,
+        targetAmount: g.target_amount ?? g.targetAmount,
+        savedAmount: g.saved_amount ?? g.savedAmount
+      }));
+      setSavingGoals(mappedGoals);
+    }
+    
+    // Fetch Shopping List
+    const { data: shopData } = await supabase.from('shopping_list').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
+    if (shopData) setShoppingList(shopData);
+  }, [currentUser, partnerInfo, familyStatus]);
+
+  const fetchFamilyConnection = useCallback(async () => {
     if (!currentUser) return;
     const { data: connectedData } = await supabase
       .from('family_links')
@@ -189,8 +212,61 @@ const App: React.FC = () => {
       if (sentRequests && sentRequests.length > 0) setFamilyStatus('pending');
       else setFamilyStatus('none');
     }
-  };
+  }, [currentUser]);
 
+  // --- EFFECTS ---
+  
+  // 1. Initial Session Check
+  useEffect(() => {
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setCurrentUser({ id: session.user.id, email: session.user.email || '', name: session.user.user_metadata?.name || 'Mây' });
+      }
+      setIsAppLoading(false);
+    };
+    initSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setCurrentUser({ id: session.user.id, email: session.user.email || '', name: session.user.user_metadata?.name || 'Mây' });
+      } else {
+        // Only set null here, logout cleanup is handled in handleLogout or manually if needed
+        if (!session) setCurrentUser(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 2. Data Fetching & Realtime
+  useEffect(() => {
+    if (currentUser) {
+      fetchUserData();
+      fetchFamilyConnection();
+
+      const channel = supabase.channel('db_changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public' },
+          (payload) => {
+            if (['expenses', 'shopping_list', 'saving_goals', 'profiles'].includes(payload.table)) {
+              fetchUserData();
+            }
+            if (payload.table === 'family_links') {
+              fetchFamilyConnection();
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [currentUser, fetchUserData, fetchFamilyConnection]);
+
+  // --- LOGIC HANDLERS ---
+  
   const handleSendFamilyRequest = async () => {
     if (!partnerEmailInput.trim() || !currentUser) return;
     setIsLinkingLoading(true);
@@ -238,24 +314,6 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchUserData = async () => {
-    if (!currentUser) return;
-    const { data: profileData } = await supabase.from('profiles').select('weekly_budget, family_budget').eq('id', currentUser.id).single();
-    if (profileData) {
-      if (profileData.weekly_budget) setWeeklyBudget(profileData.weekly_budget);
-      if (profileData.family_budget) setFamilyBudget(profileData.family_budget);
-    }
-    let userIds = [currentUser.id];
-    if (partnerInfo && familyStatus === 'connected') userIds.push(partnerInfo.id);
-    const { data: expData } = await supabase.from('expenses').select('*').in('user_id', userIds).order('date', { ascending: false });
-    if (expData) setExpenses(expData.filter(e => e.user_id === currentUser.id || e.is_family));
-    const { data: goalData } = await supabase.from('saving_goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
-    if (goalData) setSavingGoals(goalData);
-    const { data: shopData } = await supabase.from('shopping_list').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
-    if (shopData) setShoppingList(shopData);
-  };
-
-  // ... (expense functions: handleAddExpense, handleUpdateExpense, handleDeleteExpense)
   const handleAddExpense = async (newExp: any) => {
     if (!currentUser) return;
     const { data, error } = await supabase.from('expenses').insert([{ ...newExp, user_id: currentUser.id, is_family: walletMode === 'family' }]).select();
@@ -277,14 +335,13 @@ const App: React.FC = () => {
     }
   };
 
-  // Goals Logic Updated
   const handleContributeToGoals = async (goalId: string, amount: number, showOverlay = true) => {
     if (!currentUser || amount <= 0) return;
     const goal = savingGoals.find(g => g.id === goalId);
     if (!goal) return;
 
     const newAmount = goal.savedAmount + amount;
-    const { error } = await supabase.from('saving_goals').update({ savedAmount: newAmount }).eq('id', goalId);
+    const { error } = await supabase.from('saving_goals').update({ saved_amount: newAmount }).eq('id', goalId);
     
     if (!error) {
       setSavingGoals(prev => prev.map(g => g.id === goalId ? { ...g, savedAmount: newAmount } : g));
@@ -293,30 +350,43 @@ const App: React.FC = () => {
         setShowRewardOverlay('💰');
         setTimeout(() => setShowRewardOverlay(null), 1500);
       }
+    } else {
+      alert("Lỗi cập nhật: " + error.message);
     }
   };
 
   const handleCreateGoal = async () => {
     if (!currentUser || !newGoalName || !newGoalTarget) return;
     const randomColor = GOAL_COLORS[Math.floor(Math.random() * GOAL_COLORS.length)].id;
-    // Use selected icon or random if somehow empty (though initialized)
     const iconToUse = newGoalIcon || GOAL_ICONS[0];
     
+    // Using snake_case for DB columns
     const { data, error } = await supabase.from('saving_goals').insert([{
       user_id: currentUser.id,
       name: newGoalName,
-      targetAmount: parseInt(newGoalTarget),
-      savedAmount: 0,
+      target_amount: parseInt(newGoalTarget),
+      saved_amount: 0,
       icon: iconToUse,
       color: randomColor
     }]).select();
 
-    if (!error && data) {
-      setSavingGoals([data[0], ...savingGoals]);
+    if (error) {
+      alert("Không thể tạo hũ mục tiêu: " + error.message);
+      return;
+    }
+
+    if (data) {
+      const createdGoal = data[0];
+      const mappedGoal: SavingGoal = {
+        ...createdGoal,
+        targetAmount: createdGoal.target_amount ?? createdGoal.targetAmount,
+        savedAmount: createdGoal.saved_amount ?? createdGoal.savedAmount
+      };
+      setSavingGoals([mappedGoal, ...savingGoals]);
       setIsAddingGoal(false);
       setNewGoalName('');
       setNewGoalTarget('');
-      setNewGoalIcon(GOAL_ICONS[0]); // Reset icon
+      setNewGoalIcon(GOAL_ICONS[0]);
     }
   };
 
@@ -325,6 +395,8 @@ const App: React.FC = () => {
     const { error } = await supabase.from('saving_goals').delete().eq('id', id);
     if (!error) {
       setSavingGoals(prev => prev.filter(g => g.id !== id));
+    } else {
+      alert("Lỗi xóa: " + error.message);
     }
   };
 
@@ -348,11 +420,14 @@ const App: React.FC = () => {
         setShowRewardOverlay(null);
       }, 3000);
     } else {
-      alert("Mây tạo một hũ mục tiêu trước để đựng tiền thưởng nhiệm vụ nha! 🎯");
+      if (confirm("Mây chưa có hũ tiết kiệm nào để đựng tiền thưởng. Mây có muốn tạo hũ mới ngay không? 🎯")) {
+         setActiveTab('tools');
+         setSelectedTool('goals');
+         setIsAddingGoal(true);
+      }
     }
   };
 
-  // ... (shopping list functions)
   const handleAddShoppingItem = async (name?: string) => {
     const itemName = name || newShoppingName.trim();
     if (!currentUser || !itemName) return;
@@ -379,7 +454,6 @@ const App: React.FC = () => {
     if (!error) setShoppingList(prev => prev.filter(item => item.id !== id));
   };
 
-  // ... (Gemini services)
   const handleGetShoppingAdvice = async () => {
     if (shoppingList.length === 0) return;
     setIsAdviceLoading(true);
@@ -431,7 +505,7 @@ const App: React.FC = () => {
     setIsAnalyzing(false);
   };
 
-  // Memos
+  // --- MEMOS ---
   const totalSpentMonth = useMemo(() => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -522,25 +596,82 @@ const App: React.FC = () => {
   };
   const currentTheme = themeConfig[appTheme];
 
+  // --- RENDER ---
+  
+  // Loading Screen
+  if (isAppLoading) {
+    return (
+      <div className="min-h-screen bg-[#FFF5F7] flex flex-col items-center justify-center relative overflow-hidden">
+         <div className="absolute inset-0 bg-gradient-to-br from-pink-200 to-blue-100 opacity-20"></div>
+         <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl animate-bounce z-10 text-5xl">🐷</div>
+         <p className="mt-4 text-pink-400 font-bold text-sm tracking-widest animate-pulse">Đang tải Heo Đất...</p>
+      </div>
+    );
+  }
+
+  // Login Screen
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#FFF5F7] flex flex-col items-center justify-center p-8">
-        <div className="w-24 h-24 bg-white rounded-[32px] flex items-center justify-center shadow-xl mb-10 animate-soft-bounce text-5xl">🐷</div>
-        <div className="bg-white w-full max-sm p-10 rounded-[48px] shadow-2xl transition-all duration-500 hover:shadow-pink-200/50">
-          <h2 className="text-3xl font-black text-gray-800 mb-2 tracking-tight">{isRegistering ? 'Chào Mây Mới! 🌸' : 'Mây Về Rồi! ✨'}</h2>
-          {authError && <div className="bg-red-50 text-red-500 text-xs font-bold p-3 rounded-xl mb-4"><i className="fa-solid fa-triangle-exclamation mr-2"></i>{authError}</div>}
-          <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-6">
-            {isRegistering && <input type="text" placeholder="Tên của Mây..." value={authName} onChange={e => setAuthName(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 transition-all" required />}
-            <input type="email" placeholder="Email..." value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 transition-all" required />
-            <input type="password" placeholder="Mật khẩu..." value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 transition-all" required />
-            <button disabled={isAuthLoading} type="submit" className="w-full bg-gradient-to-r from-pink-400 to-rose-400 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all mt-4">{isAuthLoading ? 'Đang xác nhận...' : (isRegistering ? 'Tham Gia Ngay' : 'Vào Chăm Heo')}</button>
-          </form>
-          <button onClick={() => setIsRegistering(!isRegistering)} className="w-full text-center mt-8 text-[10px] font-black text-pink-400 uppercase tracking-widest">{isRegistering ? 'Đã có hũ heo? Đăng nhập' : 'Chưa có hũ heo? Đăng ký'}</button>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-[#FFF5F7]">
+        {/* Decorative Background */}
+        <div className="absolute top-[-10%] left-[-10%] w-[300px] h-[300px] bg-purple-200 rounded-full blur-[100px] opacity-40"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-pink-200 rounded-full blur-[100px] opacity-40"></div>
+        
+        <div className="w-full max-w-sm relative z-10">
+           <div className="flex flex-col items-center mb-8">
+              <div className="w-28 h-28 bg-white/80 backdrop-blur-md rounded-[32px] flex items-center justify-center shadow-2xl mb-6 animate-soft-bounce border border-white">
+                <span className="text-6xl filter drop-shadow-sm">🐷</span>
+              </div>
+              <h1 className="text-3xl font-black text-gray-800 tracking-tight text-center mb-2">
+                {isRegistering ? 'Gia Nhập Nhà Mây' : 'Chào Mây Quay Lại!'}
+              </h1>
+              <p className="text-sm font-bold text-gray-400 text-center">
+                {isRegistering ? 'Tạo hũ heo để bắt đầu hành trình tiết kiệm.' : 'Đăng nhập để xem "gia tài" của bạn.'}
+              </p>
+           </div>
+
+           <div className="glass-morphism rounded-[40px] p-8 shadow-xl border border-white/60">
+              {authError && (
+                <div className="bg-red-50 text-red-500 text-xs font-bold p-3 rounded-xl mb-6 flex items-center gap-2 animate-in slide-in-from-top-2">
+                  <i className="fa-solid fa-triangle-exclamation"></i> {authError}
+                </div>
+              )}
+              
+              <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-5">
+                {isRegistering && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Tên của Mây</label>
+                    <input type="text" placeholder="Ví dụ: Mây Xinh" value={authName} onChange={e => setAuthName(e.target.value)} className="w-full p-4 bg-gray-50/80 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 focus:bg-white transition-all shadow-inner" required />
+                  </div>
+                )}
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Email</label>
+                    <input type="email" placeholder="may@example.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full p-4 bg-gray-50/80 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 focus:bg-white transition-all shadow-inner" required />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Mật khẩu</label>
+                    <input type="password" placeholder="••••••••" value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full p-4 bg-gray-50/80 rounded-2xl outline-none font-bold text-gray-700 border-2 border-transparent focus:border-pink-200 focus:bg-white transition-all shadow-inner" required />
+                </div>
+                
+                <button disabled={isAuthLoading} type="submit" className="w-full bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-pink-200/50 active:scale-95 transition-all mt-4 flex items-center justify-center gap-2">
+                   {isAuthLoading && <i className="fa-solid fa-spinner fa-spin"></i>}
+                   {isRegistering ? 'Đăng Ký Ngay' : 'Vào Chăm Heo'}
+                </button>
+              </form>
+              
+              <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+                 <p className="text-xs font-bold text-gray-400 mb-2">{isRegistering ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'}</p>
+                 <button onClick={() => setIsRegistering(!isRegistering)} className="text-pink-500 font-black text-sm hover:underline tracking-wide">
+                   {isRegistering ? 'Đăng nhập tại đây' : 'Tạo tài khoản mới'}
+                 </button>
+              </div>
+           </div>
         </div>
       </div>
     );
   }
 
+  // Main App Interface
   return (
     <div className={`max-w-md mx-auto min-h-screen pb-32 relative ${walletMode === 'family' ? 'bg-[#FFF9F0]' : currentTheme.bg} transition-all duration-700`}>
       {showRewardOverlay && <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-[1000] animate-bounce text-9xl">{showRewardOverlay}</div>}
@@ -708,7 +839,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Reports Tab ... (unchanged in logic but included for file completeness) */}
+        {/* Reports Tab */}
         {activeTab === 'reports' && (
           <div className="animate-in fade-in duration-500 pb-20">
              <h2 className="text-2xl font-black text-gray-800 mb-6">Báo Cáo Chi Tiêu 📊</h2>
@@ -773,7 +904,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tools Tab - Modified */}
+        {/* Tools Tab */}
         {activeTab === 'tools' && (
           <div className="animate-in fade-in duration-500 pb-20">
              <h2 className="text-2xl font-black text-gray-800 mb-6">Tiện Ích 🛠️</h2>
@@ -819,7 +950,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Shopping List - Improved */}
+                {/* Shopping List */}
                 {selectedTool === 'shopping' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between">
@@ -879,7 +1010,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Saving Goals - Improved */}
+                {/* Saving Goals */}
                 {selectedTool === 'goals' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
                      <div className="flex justify-between items-center">
@@ -944,7 +1075,7 @@ const App: React.FC = () => {
                                    <div className={`text-xs font-black px-3 py-1 rounded-full ${goalConfig.badge} bg-opacity-20`}>{Math.round(percent)}%</div>
                                 </div>
 
-                                {/* Contribution Input - Improved */}
+                                {/* Contribution Input */}
                                 <div className="flex gap-2 bg-gray-50/80 p-1.5 rounded-2xl border border-gray-100">
                                    <input 
                                      type="number" 
@@ -970,7 +1101,7 @@ const App: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Family Wallet, Budget, Handbook sections are similar but kept for context ... */}
+                {/* Family Wallet */}
                 {selectedTool === 'family_wallet' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
                     <h3 className="font-black text-gray-800 text-lg">Kết Nối Gia Đình 🏠</h3>
