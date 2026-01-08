@@ -148,3 +148,48 @@ export const analyzeSpending = async (expenses: Expense[], budget: number) => {
   });
   return response.text;
 };
+
+export const suggestDailyMenu = async (style: string) => {
+  const ai = getAI();
+  const prompt = `Gợi ý thực đơn 3 bữa (Sáng, Trưa, Tối) cho một ngày, phong cách: "${style}". 
+  Món ăn phải thuần Việt, dễ nấu.
+  Trả về JSON:
+  {
+    "breakfast": { "dish": "Tên món", "ingredients": ["nguyên liệu 1", "nguyên liệu 2"] },
+    "lunch": { "dish": "Tên món", "ingredients": ["nguyên liệu 1", "nguyên liệu 2"] },
+    "dinner": { "dish": "Tên món", "ingredients": ["nguyên liệu 1", "nguyên liệu 2"] },
+    "tips": "Một lời khuyên nhỏ dễ thương khi nấu ăn hôm nay"
+  }`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          breakfast: { 
+            type: Type.OBJECT, 
+            properties: { dish: {type: Type.STRING}, ingredients: {type: Type.ARRAY, items: {type: Type.STRING}} } 
+          },
+          lunch: { 
+            type: Type.OBJECT, 
+            properties: { dish: {type: Type.STRING}, ingredients: {type: Type.ARRAY, items: {type: Type.STRING}} } 
+          },
+          dinner: { 
+            type: Type.OBJECT, 
+            properties: { dish: {type: Type.STRING}, ingredients: {type: Type.ARRAY, items: {type: Type.STRING}} } 
+          },
+          tips: { type: Type.STRING }
+        }
+      }
+    }
+  });
+
+  try {
+    return JSON.parse(response.text || "{}");
+  } catch (e) {
+    return null;
+  }
+};

@@ -6,7 +6,7 @@ import { ExpenseForm } from './components/ExpenseForm';
 import { PiggyBank } from './components/PiggyBank';
 import { CATEGORY_ICONS, CATEGORY_COLORS } from './constants';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, CartesianGrid, XAxis } from 'recharts';
-import { getMarketHandbook, getShoppingAdvice, extractIngredients, analyzeSpending } from './services/geminiService';
+import { getMarketHandbook, getShoppingAdvice, extractIngredients, analyzeSpending, suggestDailyMenu } from './services/geminiService';
 import { supabase } from './services/supabase';
 
 const GOAL_ICONS = ['🎁', '🏖️', '🏠', '🚗', '📱', '💍', '🎓', '🍱', '🚲', '🎸', '✈️', '💄', '🧸', '🍰', '🐶', '🍕', '💻', '👠', '👜', '🕶️', '🧵', '📷', '⛺', '🏝️', '💒', '👶', '🏥', '🦷'];
@@ -64,6 +64,11 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
+  // Meal Planner State
+  const [menuStyle, setMenuStyle] = useState('Tiết kiệm');
+  const [dailyMenu, setDailyMenu] = useState<any>(null);
+  const [isMenuLoading, setIsMenuLoading] = useState(false);
+
   // Inputs
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [newGoalName, setNewGoalName] = useState('');
@@ -479,6 +484,21 @@ const App: React.FC = () => {
     }
     alert(`Đã thêm ${ingredients.length} nguyên liệu vào giỏ hàng của Mây rồi nhé! 🛒✨`);
     setIsAdviceLoading(false);
+  };
+
+  const handleSuggestMenu = async () => {
+    setIsMenuLoading(true);
+    const menu = await suggestDailyMenu(menuStyle);
+    setDailyMenu(menu);
+    setIsMenuLoading(false);
+  };
+
+  const handleAddMenuToCart = async (ingredients: string[]) => {
+    if (!ingredients || ingredients.length === 0) return;
+    for (const ing of ingredients) {
+      await handleAddShoppingItem(ing);
+    }
+    alert(`Đã thêm ${ingredients.length} nguyên liệu vào giỏ hàng! 🛒`);
   };
 
   const handleUpdateBudget = async (type: 'weekly' | 'family', amount: string) => {
@@ -931,6 +951,10 @@ const App: React.FC = () => {
                  <span className="text-3xl">📒</span>
                  <span className="text-xs font-black text-gray-600 uppercase">Cẩm Nang</span>
                </button>
+               <button onClick={() => setSelectedTool('meal_planner')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'meal_planner' ? 'bg-yellow-100 border-yellow-300' : 'bg-white border-gray-100 hover:border-yellow-200'}`}>
+                 <span className="text-3xl">🍱</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Thực Đơn</span>
+               </button>
              </div>
              )}
 
@@ -1199,6 +1223,70 @@ const App: React.FC = () => {
                         </div>
                      ) : (
                         <p className="text-center text-xs text-gray-400 py-10">Chọn chủ đề để xem nhé!</p>
+                     )}
+                  </div>
+                )}
+
+                {/* Meal Planner Tool */}
+                {selectedTool === 'meal_planner' && (
+                  <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                     <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-yellow-400 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg"><i className="fa-solid fa-utensils"></i></div>
+                        <div><h3 className="text-lg font-black text-gray-800">Thực Đơn Hôm Nay</h3></div>
+                     </div>
+
+                     <div className="bg-white p-5 rounded-[24px] shadow-sm border border-gray-100 space-y-4">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Phong cách ăn uống</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Tiết kiệm', 'Healthy', 'Món nhậu', 'Cuối tuần', 'Chay', 'Nhanh gọn'].map(style => (
+                            <button 
+                              key={style} 
+                              onClick={() => setMenuStyle(style)}
+                              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${menuStyle === style ? 'bg-yellow-400 text-white border-yellow-400 shadow-md' : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-yellow-200'}`}
+                            >
+                              {style}
+                            </button>
+                          ))}
+                        </div>
+                        <button 
+                          onClick={handleSuggestMenu} 
+                          disabled={isMenuLoading}
+                          className="w-full py-3 bg-yellow-400 text-white rounded-xl font-black text-sm uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          {isMenuLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
+                          Gợi ý thực đơn
+                        </button>
+                     </div>
+
+                     {dailyMenu && (
+                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                          <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 text-sm italic text-gray-600">
+                             💡 {dailyMenu.tips}
+                          </div>
+                          
+                          {['breakfast', 'lunch', 'dinner'].map((mealKey) => {
+                             const meal = dailyMenu[mealKey];
+                             const titles: Record<string, string> = { breakfast: 'Bữa Sáng ☀️', lunch: 'Bữa Trưa 🌤️', dinner: 'Bữa Tối 🌙' };
+                             return (
+                               <div key={mealKey} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
+                                  <div className="absolute top-0 right-0 w-16 h-16 bg-yellow-100 rounded-bl-[40px] opacity-50 -z-0"></div>
+                                  <h4 className="font-black text-gray-400 text-xs uppercase tracking-widest mb-1 relative z-10">{titles[mealKey]}</h4>
+                                  <h3 className="text-lg font-bold text-gray-800 mb-2 relative z-10">{meal.dish}</h3>
+                                  <div className="flex flex-wrap gap-1 mb-3 relative z-10">
+                                    {meal.ingredients.map((ing: string, i: number) => (
+                                      <span key={i} className="text-[10px] bg-gray-50 px-2 py-1 rounded-md text-gray-500 border border-gray-100">{ing}</span>
+                                    ))}
+                                  </div>
+                                  <button 
+                                    onClick={() => handleAddMenuToCart(meal.ingredients)}
+                                    className="text-[10px] font-bold text-yellow-600 flex items-center gap-1 hover:underline relative z-10"
+                                  >
+                                    <i className="fa-solid fa-plus-circle"></i> Đi chợ mua món này
+                                  </button>
+                               </div>
+                             );
+                          })}
+                       </div>
                      )}
                   </div>
                 )}
