@@ -13,6 +13,8 @@ export interface User {
   email: string;
   name: string;
   password?: string;
+  weekly_budget?: number;
+  family_budget?: number;
 }
 
 export interface Expense {

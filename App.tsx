@@ -66,15 +66,9 @@ const App: React.FC = () => {
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
 
-  // Budget States
-  const [weeklyBudget, setWeeklyBudget] = useState<number>(() => {
-    const saved = localStorage.getItem('heodat_weekly_budget');
-    return saved ? parseInt(saved) : 1500000;
-  });
-  const [familyBudget, setFamilyBudget] = useState<number>(() => {
-    const saved = localStorage.getItem('heodat_family_budget');
-    return saved ? parseInt(saved) : 15000000;
-  });
+  // Budget States - Now synced with Supabase Profiles
+  const [weeklyBudget, setWeeklyBudget] = useState<number>(1500000);
+  const [familyBudget, setFamilyBudget] = useState<number>(15000000);
 
   // Saving Goals Form States
   const [goalContributionInputs, setGoalContributionInputs] = useState<Record<string, string>>({});
@@ -96,16 +90,39 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsAuthLoading(true);
     setAuthError(null);
-    const { error } = await supabase.auth.signUp({ 
+    
+    // 1. Sign up user
+    const { data: authData, error: authError } = await supabase.auth.signUp({ 
       email: authEmail, 
       password: authPassword, 
       options: { data: { name: authName } } 
     });
-    if (error) setAuthError(error.message);
-    else {
+
+    if (authError) {
+      setAuthError(authError.message);
+      setIsAuthLoading(false);
+      return;
+    }
+
+    // 2. Create Profile immediately
+    if (authData.user) {
+      const { error: profileError } = await supabase.from('profiles').insert([{
+        id: authData.user.id,
+        email: authEmail,
+        name: authName,
+        weekly_budget: 1500000,
+        family_budget: 15000000
+      }]);
+
+      if (profileError) {
+        console.error("Lỗi tạo profile:", profileError);
+        // Continue anyway as auth was successful, profile might be created by trigger or later
+      }
+      
       alert("Đăng ký thành công! Mây có thể đăng nhập ngay.");
       setIsRegistering(false);
     }
+    
     setIsAuthLoading(false);
   };
 
@@ -118,6 +135,9 @@ const App: React.FC = () => {
       setSavingGoals([]);
       setFamilyStatus('none');
       setPartnerInfo(null);
+      // Reset budgets to default on logout
+      setWeeklyBudget(1500000);
+      setFamilyBudget(15000000);
     }
   };
 
@@ -247,6 +267,20 @@ const App: React.FC = () => {
 
   const fetchUserData = async () => {
     if (!currentUser) return;
+    
+    // 1. Fetch Profile for Budgets
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('weekly_budget, family_budget')
+      .eq('id', currentUser.id)
+      .single();
+    
+    if (profileData) {
+      if (profileData.weekly_budget) setWeeklyBudget(profileData.weekly_budget);
+      if (profileData.family_budget) setFamilyBudget(profileData.family_budget);
+    }
+
+    // 2. Fetch Expenses
     let userIds = [currentUser.id];
     if (partnerInfo && familyStatus === 'connected') userIds.push(partnerInfo.id);
 
@@ -257,9 +291,11 @@ const App: React.FC = () => {
       .order('date', { ascending: false });
     if (expData) setExpenses(expData.filter(e => e.user_id === currentUser.id || e.is_family));
 
+    // 3. Fetch Goals
     const { data: goalData } = await supabase.from('saving_goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (goalData) setSavingGoals(goalData);
     
+    // 4. Fetch Shopping List
     const { data: shopData } = await supabase.from('shopping_list').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
     if (shopData) setShoppingList(shopData);
   };
@@ -285,7 +321,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleContributeToGoals = async (goalId: string, amount: number) => {
+  const handleContributeToGoals = async (goalId: string, amount: number, showOverlay = true) => {
     if (!currentUser || amount <= 0) return;
     const goal = savingGoals.find(g => g.id === goalId);
     if (!goal) return;
@@ -296,8 +332,10 @@ const App: React.FC = () => {
     if (!error) {
       setSavingGoals(prev => prev.map(g => g.id === goalId ? { ...g, savedAmount: newAmount } : g));
       setGoalContributionInputs(prev => ({ ...prev, [goalId]: '' }));
-      setShowRewardOverlay('💰');
-      setTimeout(() => setShowRewardOverlay(null), 1500);
+      if (showOverlay) {
+        setShowRewardOverlay('💰');
+        setTimeout(() => setShowRewardOverlay(null), 1500);
+      }
     }
   };
 
@@ -344,9 +382,15 @@ const App: React.FC = () => {
   // Quest Logic
   const handleQuestComplete = async (amount: number) => {
     if (savingGoals.length > 0) {
-      await handleContributeToGoals(savingGoals[0].id, amount);
+      // Logic: Cộng vào Hũ mục tiêu đầu tiên (được coi là Hũ Heo Mây chính)
+      const targetGoal = savingGoals[0];
+      await handleContributeToGoals(targetGoal.id, amount, false);
       setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 3000);
+      setShowRewardOverlay(`+${(amount/1000).toLocaleString()}k`);
+      setTimeout(() => {
+        setShowConfetti(false);
+        setShowRewardOverlay(null);
+      }, 3000);
     } else {
       alert("Mây tạo một hũ mục tiêu trước để đựng tiền thưởng nhiệm vụ nha! 🎯");
     }
@@ -405,17 +449,21 @@ const App: React.FC = () => {
     setIsAdviceLoading(false);
   };
 
-  // Budget Update Logic
-  const handleUpdateBudget = (type: 'weekly' | 'family', amount: string) => {
+  // Budget Update Logic with Supabase Sync
+  const handleUpdateBudget = async (type: 'weekly' | 'family', amount: string) => {
      const value = parseInt(amount);
      if (isNaN(value) || value < 0) return;
      
      if (type === 'weekly') {
        setWeeklyBudget(value);
-       localStorage.setItem('heodat_weekly_budget', value.toString());
      } else {
        setFamilyBudget(value);
-       localStorage.setItem('heodat_family_budget', value.toString());
+     }
+
+     if (currentUser) {
+        const updateData = type === 'weekly' ? { weekly_budget: value } : { family_budget: value };
+        const { error } = await supabase.from('profiles').update(updateData).eq('id', currentUser.id);
+        if (error) console.error("Failed to sync budget to cloud:", error);
      }
   };
 
@@ -424,6 +472,11 @@ const App: React.FC = () => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     return expenses.filter(e => e.amount > 0 && (walletMode === 'personal' ? !e.is_family : e.is_family) && new Date(e.date) >= startOfMonth).reduce((sum, e) => sum + e.amount, 0);
   }, [expenses, walletMode]);
+
+  // NEW: Calculate Total Savings from all goals
+  const totalSavedAmount = useMemo(() => {
+    return savingGoals.reduce((sum, goal) => sum + goal.savedAmount, 0);
+  }, [savingGoals]);
 
   const weeklySpent = useMemo(() => {
     const now = new Date();
@@ -595,7 +648,7 @@ const App: React.FC = () => {
            {/* Mascot Message Bubble */}
            <div className="absolute right-12 top-0 w-48 bg-white p-3 rounded-l-2xl rounded-tr-2xl rounded-br-sm shadow-xl border border-pink-100 animate-in fade-in slide-in-from-right-4">
              <p className="text-[10px] font-bold text-gray-600 leading-tight">
-               {getMascotMessage(totalSpentMonth)}
+               {getMascotMessage(totalSavedAmount)}
              </p>
            </div>
            
@@ -620,484 +673,493 @@ const App: React.FC = () => {
 
             {/* Daily Quest Section */}
             <div>
-              <h3 className="text-lg font-black text-gray-800 mb-4 flex items-center gap-2">
-                <i className="fa-solid fa-scroll text-amber-400"></i> Nhiệm Vụ Hằng Ngày
-              </h3>
-              <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
+              <div className="flex justify-between items-end mb-4">
+                 <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                   <i className="fa-solid fa-scroll text-amber-400"></i> Nhiệm Vụ Hằng Ngày
+                 </h3>
+                 {savingGoals.length > 0 && (
+                   <span className="text-[10px] font-bold text-gray-400 bg-white/50 px-3 py-1 rounded-full border border-white">
+                     Mục tiêu: <span className="text-pink-500">{savingGoals[0].name}</span>
+                   </span>
+                 )}
+              </div>
+              
+              <div className="flex gap-4 overflow-x-auto pb-6 custom-scrollbar snap-x px-1">
                 {[
-                  { id: 'coffee', title: 'Cai Trà Sữa', amount: 30000, icon: '🧋', color: 'from-orange-400 to-pink-500', bg: 'bg-orange-50' },
-                  { id: 'change', title: 'Góp Tiền Lẻ', amount: 5000, icon: '🪙', color: 'from-emerald-400 to-teal-500', bg: 'bg-emerald-50' },
-                  { id: 'fine', title: 'Phạt Bản Thân', amount: 50000, icon: '⚡', color: 'from-rose-400 to-red-500', bg: 'bg-rose-50' }
+                  { 
+                    id: 'coffee', 
+                    title: 'Cai Trà Sữa', 
+                    amount: 30000, 
+                    icon: <div className="relative"><i className="fa-solid fa-glass-water text-blue-400 text-3xl"></i><i className="fa-solid fa-leaf text-green-400 absolute -top-1 -right-2 text-xs"></i></div>, 
+                    color: 'from-orange-400 to-pink-500', 
+                    bg: 'bg-orange-50', 
+                    desc: 'Uống nước lọc cho healthy!' 
+                  },
+                  { 
+                    id: 'change', 
+                    title: 'Góp Tiền Lẻ', 
+                    amount: 5000, 
+                    icon: <i className="fa-solid fa-piggy-bank text-emerald-500 text-3xl"></i>, 
+                    color: 'from-emerald-400 to-teal-500', 
+                    bg: 'bg-emerald-50', 
+                    desc: 'Tích tiểu thành đại nè' 
+                  },
+                  { 
+                    id: 'fine', 
+                    title: 'Phạt Bản Thân', 
+                    amount: 50000, 
+                    icon: <i className="fa-solid fa-bolt text-rose-500 text-3xl"></i>, 
+                    color: 'from-rose-400 to-red-500', 
+                    bg: 'bg-rose-50', 
+                    desc: 'Lần sau không thế nữa!' 
+                  }
                 ].map(quest => (
-                  <div key={quest.id} className={`snap-center min-w-[140px] p-4 rounded-[32px] bg-white/40 backdrop-blur-md border border-white shadow-lg flex flex-col items-center gap-3 relative overflow-hidden group hover:scale-[1.02] transition-transform`}>
-                    <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${quest.color}`}></div>
-                    <div className="text-3xl mt-2 group-hover:scale-110 transition-transform">{quest.icon}</div>
-                    <div className="text-center">
-                       <p className="text-[10px] font-black text-gray-500 uppercase tracking-tight">{quest.title}</p>
-                       <p className={`text-sm font-black text-transparent bg-clip-text bg-gradient-to-r ${quest.color}`}>+{quest.amount.toLocaleString()}đ</p>
-                    </div>
-                    <button 
-                      onClick={() => handleQuestComplete(quest.amount)}
-                      className={`w-full py-2 rounded-xl text-[9px] font-black text-white bg-gradient-to-r ${quest.color} shadow-md active:scale-90 transition-transform`}
-                    >
-                      Thực hiện
-                    </button>
+                  <div key={quest.id} className="snap-center min-w-[160px] relative group">
+                     {/* Card Body */}
+                     <div className="bg-white/60 backdrop-blur-xl p-5 rounded-[32px] border-2 border-white shadow-lg flex flex-col items-center gap-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${quest.color} bg-opacity-10 flex items-center justify-center shadow-sm border border-white`}>
+                           {/* Render JSX Icon directly */}
+                           <div className="bg-white w-10 h-10 rounded-xl flex items-center justify-center shadow-inner">
+                              {quest.icon}
+                           </div>
+                        </div>
+                        <div className="text-center w-full">
+                           <h4 className="font-black text-gray-700 text-xs uppercase tracking-tight mb-1">{quest.title}</h4>
+                           <p className="text-[9px] font-bold text-gray-400 line-clamp-1">{quest.desc}</p>
+                        </div>
+                        <div className="w-full h-[1px] bg-gray-100"></div>
+                        <p className={`text-sm font-black text-transparent bg-clip-text bg-gradient-to-r ${quest.color}`}>+{quest.amount.toLocaleString()}đ</p>
+                        
+                        <button 
+                          onClick={() => handleQuestComplete(quest.amount)}
+                          className={`w-full py-2.5 rounded-xl text-[10px] font-black text-white bg-gradient-to-r ${quest.color} shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1 group-hover:gap-2`}
+                        >
+                          <span>Thực hiện</span> <i className="fa-solid fa-arrow-right"></i>
+                        </button>
+                     </div>
+                     
+                     {/* Decoration */}
+                     <div className={`absolute -z-10 inset-4 bg-gradient-to-r ${quest.color} blur-xl opacity-20 group-hover:opacity-40 transition-opacity`}></div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <PiggyBank savings={totalSpentMonth} />
+            <PiggyBank savings={totalSavedAmount} />
           </div>
         )}
-
+        
         {activeTab === 'history' && (
-          <div className="space-y-6 animate-in slide-in-from-right-4">
-             <h2 className="text-2xl font-black text-gray-800 tracking-tight">Sổ Tay Chi Tiêu 📖</h2>
-             {Object.keys(historyGrouped).length === 0 ? (
-               <div className="text-center py-20 opacity-40">
-                 <i className="fa-solid fa-note-sticky text-4xl mb-4"></i>
-                 <p className="text-xs font-bold uppercase tracking-widest">Chưa có dòng nhật ký nào...</p>
-               </div>
-             ) : (
-               Object.keys(historyGrouped).sort((a: string, b: string) => new Date(b.split('/').reverse().join('-')).getTime() - new Date(a.split('/').reverse().join('-')).getTime()).map(date => (
-                 <div key={date} className="space-y-3">
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest sticky top-24 bg-inherit/90 backdrop-blur-sm py-2 z-10">{date}</p>
-                   {historyGrouped[date].map(exp => (
-                     <div key={exp.id} className="bg-white p-5 rounded-[24px] shadow-sm border border-gray-50 flex items-center justify-between group hover:border-pink-200 transition-all">
-                        <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => { setEditExpense(exp); setIsFormOpen(true); }}>
-                           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg ${CATEGORY_COLORS[exp.category as Category] ? '' : 'bg-gray-100'}`} style={{ backgroundColor: CATEGORY_COLORS[exp.category as Category] + '40' }}>
-                              {CATEGORY_ICONS[exp.category as Category]}
-                           </div>
-                           <div>
-                              <p className="font-bold text-sm text-gray-800">{exp.category}</p>
-                              <p className="text-[10px] text-gray-500 font-bold">{exp.note || 'Không có ghi chú'}</p>
-                           </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="font-black text-gray-800">-{exp.amount.toLocaleString()}đ</span>
-                          <button onClick={() => handleDeleteExpense(exp.id)} className="text-[9px] text-red-300 hover:text-red-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">Xóa</button>
-                        </div>
-                     </div>
-                   ))}
-                 </div>
-               ))
-             )}
+          <div className="animate-in fade-in duration-500">
+             <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-black text-gray-800">Sổ Tay 📖</h2>
+                <div className="text-[10px] font-bold text-gray-400 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                  {expenses.length} giao dịch
+                </div>
+             </div>
+             
+             <div className="space-y-6">
+                {Object.keys(historyGrouped).length === 0 ? (
+                  <div className="text-center py-20 opacity-50">
+                    <div className="text-6xl mb-4">📓</div>
+                    <p className="font-bold text-gray-400">Sổ tay trống trơn à...</p>
+                  </div>
+                ) : (
+                  Object.keys(historyGrouped).map(date => (
+                    <div key={date}>
+                      <div className="sticky top-20 bg-white/80 backdrop-blur-md z-30 py-2 px-4 rounded-xl shadow-sm border border-gray-100 inline-block mb-3">
+                        <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{date}</span>
+                      </div>
+                      <div className="space-y-3">
+                        {historyGrouped[date].map(exp => (
+                          <div key={exp.id} className="bg-white p-4 rounded-[24px] shadow-sm border border-gray-50 flex justify-between items-center group hover:shadow-md transition-all">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${walletMode === 'family' && exp.is_family ? 'bg-orange-100' : 'bg-gray-50'}`} style={{backgroundColor: !exp.is_family ? CATEGORY_COLORS[exp.category as Category] : undefined}}>
+                                {CATEGORY_ICONS[exp.category as Category]}
+                              </div>
+                              <div>
+                                <p className="font-bold text-gray-800 text-sm">{exp.note || exp.category}</p>
+                                <p className="text-[10px] font-bold text-gray-400">{exp.category}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                               <p className="font-black text-gray-800 text-sm">-{exp.amount.toLocaleString()}đ</p>
+                               <button onClick={() => handleDeleteExpense(exp.id)} className="text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:underline">Xóa</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+             </div>
           </div>
         )}
 
         {activeTab === 'reports' && (
-          <div className="space-y-8 animate-in slide-in-from-right-4 pb-10">
-            <h2 className="text-2xl font-black text-gray-800 tracking-tight">Báo Cáo Thông Thái 📊</h2>
-            
-            {/* Gamification Card */}
-            <div className={`p-6 rounded-[32px] border-2 relative overflow-hidden flex items-center gap-6 ${weeklySpent <= weeklyBudget ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
-               <div className="text-4xl animate-soft-bounce">{weeklySpent <= weeklyBudget ? '🐷🎉' : '🐷💸'}</div>
-               <div className="flex-1">
-                  <h3 className={`font-black text-sm uppercase tracking-widest ${weeklySpent <= weeklyBudget ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {weeklySpent <= weeklyBudget ? 'Heo Đất Đang Lớn!' : 'Cẩn thận vỡ hũ!'}
-                  </h3>
-                  <p className="text-[10px] font-bold text-gray-500 mt-1">
-                    {weeklySpent <= weeklyBudget 
-                      ? 'Mây đang chi tiêu rất hợp lý. Tiếp tục phát huy nhé!' 
-                      : 'Mây đã tiêu lố ngân sách tuần này rồi. Hãm phanh lại nào!'}
-                  </p>
+          <div className="animate-in fade-in duration-500 pb-20">
+             <h2 className="text-2xl font-black text-gray-800 mb-6">Báo Cáo Chi Tiêu 📊</h2>
+             
+             {/* Chart 1: Categories */}
+             <div className="bg-white p-6 rounded-[32px] shadow-lg border border-gray-100 mb-6">
+               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Phân bổ chi tiêu</h3>
+               <div className="h-64 w-full">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <PieChart>
+                     <Pie
+                       data={categoryData}
+                       innerRadius={60}
+                       outerRadius={80}
+                       paddingAngle={5}
+                       dataKey="value"
+                     >
+                       {categoryData.map((entry, index) => (
+                         <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name as Category] || '#ccc'} />
+                       ))}
+                     </Pie>
+                     <Tooltip />
+                   </PieChart>
+                 </ResponsiveContainer>
                </div>
-               {weeklySpent <= weeklyBudget && (
-                 <div className="absolute top-2 right-2 rotate-12 bg-white px-2 py-1 rounded-lg shadow-sm border border-emerald-200">
-                    <span className="text-xs">🏆</span>
-                 </div>
-               )}
-            </div>
-
-            {/* Charts Section */}
-            <div className="space-y-6">
-               <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50">
-                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Phân bổ chi tiêu</h3>
-                  <div className="h-48 w-full">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={categoryData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={40}
-                            outerRadius={70}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {categoryData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name as Category] || '#ccc'} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            itemStyle={{ fontSize: '10px', fontWeight: 'bold' }}
-                          />
-                        </PieChart>
-                     </ResponsiveContainer>
-                  </div>
-                  <div className="flex flex-wrap justify-center gap-2 mt-2">
-                     {categoryData.map(item => (
-                       <div key={item.name} className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[item.name as Category] }}></div>
-                          <span className="text-[8px] font-bold text-gray-500">{item.name}</span>
-                       </div>
-                     ))}
-                  </div>
+               <div className="grid grid-cols-2 gap-2 mt-4">
+                 {categoryData.map(d => (
+                   <div key={d.name} className="flex items-center gap-2 text-[10px] font-bold text-gray-500">
+                     <div className="w-2 h-2 rounded-full" style={{backgroundColor: CATEGORY_COLORS[d.name as Category]}}></div>
+                     <span>{d.name}: {d.value.toLocaleString()}</span>
+                   </div>
+                 ))}
                </div>
+             </div>
 
-               <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50">
-                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Xu hướng 7 ngày</h3>
-                  <div className="h-40 w-full">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={dailyTrendData}>
-                          <XAxis dataKey="date" tick={{fontSize: 8}} axisLine={false} tickLine={false} />
-                          <Tooltip 
-                             cursor={{fill: '#f3f4f6'}}
-                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                          />
-                          <Bar dataKey="amount" fill="#FBCFE8" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                     </ResponsiveContainer>
-                  </div>
+             {/* Chart 2: Daily Trend */}
+             <div className="bg-white p-6 rounded-[32px] shadow-lg border border-gray-100 mb-8">
+               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Xu hướng 7 ngày</h3>
+               <div className="h-48 w-full">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart data={dailyTrendData}>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                     <XAxis dataKey="date" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                     <Tooltip cursor={{fill: 'transparent'}} />
+                     <Bar dataKey="amount" fill="#F472B6" radius={[4, 4, 0, 0]} />
+                   </BarChart>
+                 </ResponsiveContainer>
                </div>
-            </div>
+             </div>
 
-            {/* AI Analysis Section */}
-            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-6 rounded-[32px] border border-white shadow-inner relative">
-                <div className="flex items-center gap-3 mb-3">
-                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-xl shadow-sm border border-indigo-100">🐰</div>
-                   <h3 className="text-xs font-black text-indigo-600 uppercase tracking-widest">Thỏ Mây Nhận Xét</h3>
-                </div>
-                
-                {aiAnalysis ? (
-                   <p className="text-xs font-bold text-gray-700 leading-relaxed bg-white/60 p-4 rounded-2xl border border-white">
-                     {aiAnalysis}
-                   </p>
-                ) : (
-                   <div className="text-center py-4">
-                     <p className="text-[10px] text-gray-500 mb-3">Chưa có dữ liệu phân tích mới.</p>
+             {/* AI Analysis */}
+             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-[32px] shadow-xl text-white relative overflow-hidden">
+                <div className="relative z-10">
+                   <div className="flex items-center gap-3 mb-4">
+                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
+                       <i className="fa-solid fa-robot"></i>
+                     </div>
+                     <h3 className="font-black text-lg">Góc Nhìn Thỏ Mây</h3>
+                   </div>
+                   
+                   {isAnalyzing ? (
+                     <div className="py-4 text-center text-sm font-bold opacity-80 animate-pulse">
+                       Đang suy nghĩ... 🤔
+                     </div>
+                   ) : aiAnalysis ? (
+                     <div className="text-sm leading-relaxed font-medium bg-white/10 p-4 rounded-2xl backdrop-blur-sm">
+                       {aiAnalysis}
+                     </div>
+                   ) : (
+                     <p className="text-sm opacity-80 mb-4">Mây có muốn nghe nhận xét về cách chi tiêu tháng này không?</p>
+                   )}
+                   
+                   {!isAnalyzing && !aiAnalysis && (
                      <button 
                        onClick={handleAnalyzeSpending}
-                       disabled={isAnalyzing}
-                       className="bg-indigo-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-indigo-600 transition-all disabled:opacity-50"
+                       className="w-full bg-white text-indigo-600 font-black py-3 rounded-xl shadow-lg mt-2 active:scale-95 transition-all"
                      >
-                       {isAnalyzing ? 'Đang suy nghĩ...' : 'Nhờ Mây Phân Tích'}
+                       Phân Tích Ngay ✨
                      </button>
-                   </div>
-                )}
-            </div>
+                   )}
+                </div>
+                {/* Decor */}
+                <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-400 rounded-full blur-3xl opacity-30"></div>
+                <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-400 rounded-full blur-3xl opacity-30"></div>
+             </div>
           </div>
         )}
 
         {activeTab === 'tools' && (
-          <div className="animate-in fade-in duration-500 space-y-6 pb-24">
-            <h2 className="text-2xl font-black text-gray-800 tracking-tight">Tiệm của Mây 🐰</h2>
-            {!selectedTool ? (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { id: 'shopping', name: 'Mua sắm', icon: '🛒', bg: 'bg-purple-50', text: 'text-purple-600' },
-                  { id: 'goals', name: 'Mục tiêu', icon: '🎯', bg: 'bg-amber-50', text: 'text-amber-600' },
-                  { id: 'handbook', name: 'Sổ tay AI', icon: '📖', bg: 'bg-blue-50', text: 'text-blue-600' },
-                  { id: 'family_wallet', name: 'Ví Gia Đình', icon: '👨‍👩‍👧', bg: 'bg-orange-50', text: 'text-orange-600' },
-                  { id: 'budget', name: 'Ngân sách', icon: '💸', bg: 'bg-emerald-50', text: 'text-emerald-600' },
-                ].map((tool) => (
-                  <button key={tool.id} onClick={() => setSelectedTool(tool.id)} className={`${tool.bg} p-8 rounded-[40px] flex flex-col items-center gap-3 shadow-sm border border-white hover:scale-[1.03] transition-all relative`}>
-                    {tool.id === 'family_wallet' && pendingRequests.length > 0 && <span className="absolute top-4 right-4 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>}
-                    <span className="text-4xl">{tool.icon}</span>
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${tool.text}`}>{tool.name}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <button onClick={() => { setSelectedTool(null); setSelectedHandbookTopic(null); setHandbookContent(null); }} className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-600 transition-colors">
-                  <i className="fa-solid fa-arrow-left"></i> Quay lại
-                </button>
+          <div className="animate-in fade-in duration-500 pb-20">
+             <h2 className="text-2xl font-black text-gray-800 mb-6">Tiện Ích 🛠️</h2>
+             
+             {/* Tools Navigation */}
+             <div className="grid grid-cols-2 gap-4 mb-8">
+               <button 
+                 onClick={() => setSelectedTool('shopping')} 
+                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'shopping' ? 'bg-pink-100 border-pink-300' : 'bg-white border-gray-100 hover:border-pink-200'}`}
+               >
+                 <span className="text-3xl">🛒</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Đi Chợ</span>
+               </button>
+               <button 
+                 onClick={() => setSelectedTool('goals')} 
+                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'goals' ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-100 hover:border-blue-200'}`}
+               >
+                 <span className="text-3xl">🎯</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Mục Tiêu</span>
+               </button>
+               <button 
+                 onClick={() => setSelectedTool('family_wallet')} 
+                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'family_wallet' ? 'bg-orange-100 border-orange-300' : 'bg-white border-gray-100 hover:border-orange-200'}`}
+               >
+                 <span className="text-3xl">🏠</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Ví Gia Đình</span>
+               </button>
+               <button 
+                 onClick={() => setSelectedTool('market_handbook')} 
+                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'market_handbook' ? 'bg-green-100 border-green-300' : 'bg-white border-gray-100 hover:border-green-200'}`}
+               >
+                 <span className="text-3xl">📒</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Cẩm Nang</span>
+               </button>
+             </div>
 
-                {selectedTool === 'budget' && (
-                  <div className="space-y-6 animate-in slide-in-from-right-4">
-                    <section className="bg-white p-8 rounded-[48px] border border-emerald-100 shadow-xl space-y-8">
-                       <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg"><i className="fa-solid fa-sack-dollar"></i></div>
-                          <div><h3 className="text-xl font-black text-gray-800">Cài Đặt Ngân Sách</h3></div>
-                       </div>
-                       
-                       <div className="space-y-6">
-                          <div>
-                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Ngân sách tuần (Cá nhân)</label>
-                             <div className="relative">
-                                <input 
-                                   type="number" 
-                                   defaultValue={weeklyBudget}
-                                   onBlur={(e) => handleUpdateBudget('weekly', e.target.value)}
-                                   className="w-full bg-emerald-50 p-5 rounded-[24px] outline-none font-black text-xl text-emerald-800 border-2 border-transparent focus:border-emerald-300 transition-all"
-                                />
-                                <span className="absolute right-6 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-400">VNĐ</span>
-                             </div>
-                          </div>
-
-                          <div>
-                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Ngân sách tháng (Gia đình)</label>
-                             <div className="relative">
-                                <input 
-                                   type="number" 
-                                   defaultValue={familyBudget}
-                                   onBlur={(e) => handleUpdateBudget('family', e.target.value)}
-                                   className="w-full bg-orange-50 p-5 rounded-[24px] outline-none font-black text-xl text-orange-800 border-2 border-transparent focus:border-orange-300 transition-all"
-                                />
-                                <span className="absolute right-6 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-400">VNĐ</span>
-                             </div>
-                          </div>
-                          
-                          <p className="text-[10px] text-gray-400 italic text-center">* Nhập số và bấm ra ngoài để lưu tự động nha Mây!</p>
-                       </div>
-                    </section>
-                  </div>
-                )}
-
-                {selectedTool === 'family_wallet' && (
-                  <div className="space-y-8 animate-in slide-in-from-right-4 pb-10">
-                    <section className="bg-white p-8 rounded-[48px] border border-orange-100 shadow-xl space-y-6">
-                      <div className="flex items-center gap-4">
-                         <div className="w-14 h-14 bg-orange-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg"><i className="fa-solid fa-house-chimney"></i></div>
-                         <div>
-                            <h3 className="text-xl font-black text-gray-800">Tổ Ấm Nhỏ</h3>
-                            <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">
-                              {familyStatus === 'connected' ? 'Đang chia sẻ' : 'Kết nối yêu thương'}
-                            </p>
-                         </div>
-                      </div>
-
-                      {familyStatus === 'connected' && partnerInfo ? (
-                        <div className="bg-orange-50 p-6 rounded-[32px] border border-orange-100 space-y-6 text-center">
-                           <div className="flex justify-center -space-x-4">
-                              <div className="w-16 h-16 rounded-full bg-pink-200 border-4 border-white flex items-center justify-center text-2xl">👩</div>
-                              <div className="w-16 h-16 rounded-full bg-blue-200 border-4 border-white flex items-center justify-center text-2xl">👦</div>
-                           </div>
-                           <div>
-                             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Đang kết nối với</p>
-                             <h4 className="text-xl font-black text-gray-800">{partnerInfo.name}</h4>
-                             <p className="text-[10px] text-gray-400">{partnerInfo.email}</p>
-                           </div>
-                           <button onClick={handleUnlink} className="text-[10px] font-black text-red-400 uppercase tracking-widest hover:text-red-600 transition-colors border-b border-red-200 pb-1">Ngắt kết nối ví</button>
-                        </div>
-                      ) : (
-                        <div className="space-y-6">
-                           <div className="space-y-3">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Email người ấy</label>
-                              <div className="flex gap-2">
-                                <input 
-                                  type="email" 
-                                  value={partnerEmailInput}
-                                  onChange={e => setPartnerEmailInput(e.target.value)}
-                                  placeholder="nhap.email@nguoi.ay..."
-                                  className="flex-1 bg-gray-50 p-4 rounded-2xl outline-none font-bold text-xs border focus:border-orange-300 transition-all"
-                                  disabled={familyStatus === 'pending'}
-                                />
-                                <button 
-                                  onClick={handleSendFamilyRequest}
-                                  disabled={isLinkingLoading || familyStatus === 'pending'}
-                                  className="bg-orange-500 text-white px-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-md active:scale-95 disabled:opacity-50"
-                                >
-                                  {isLinkingLoading ? '...' : (familyStatus === 'pending' ? 'Đã gửi' : 'Mời')}
-                                </button>
-                              </div>
-                              {familyStatus === 'pending' && <p className="text-[10px] text-orange-500 italic ml-2">* Đang chờ phản hồi...</p>}
-                           </div>
-
-                           {pendingRequests.length > 0 && (
-                             <div className="space-y-3 mt-6">
-                               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Lời mời đã nhận</p>
-                               {pendingRequests.map(req => (
-                                 <div key={req.id} className="bg-white border-2 border-orange-100 p-4 rounded-2xl flex justify-between items-center shadow-sm">
-                                    <div>
-                                      <p className="font-bold text-xs text-gray-800">{req.profiles?.name || 'Ai đó'}</p>
-                                      <p className="text-[9px] text-gray-400">{req.profiles?.email}</p>
-                                    </div>
-                                    <button onClick={() => handleAcceptRequest(req.id)} className="bg-emerald-500 text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-emerald-600 transition-all">
-                                      Đồng ý
-                                    </button>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                        </div>
-                      )}
-                    </section>
-                  </div>
-                )}
-
-                {selectedTool === 'goals' && (
-                  <div className="space-y-8 animate-in slide-in-from-right-4 pb-10">
-                    <section className="bg-white p-8 rounded-[48px] border border-gray-100 shadow-xl space-y-8">
-                       <div className="flex justify-between items-center px-2">
-                         <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">🎯 Hũ Mục Tiêu Tiết Kiệm</h3>
-                         <button onClick={() => setIsAddingGoal(!isAddingGoal)} className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center hover:bg-amber-200 transition-colors shadow-sm">
-                           <i className={`fa-solid ${isAddingGoal ? 'fa-minus' : 'fa-plus'} text-xs`}></i>
-                         </button>
-                       </div>
-
-                       {isAddingGoal && (
-                         <div className="bg-amber-50 p-6 rounded-[32px] border border-amber-100 space-y-4 animate-in slide-in-from-top-2">
-                            <h4 className="text-sm font-black text-amber-600">Mục tiêu mới ✨</h4>
-                            <input 
-                              type="text" 
-                              placeholder="Tên mục tiêu (vd: Mua xe)" 
-                              value={newGoalName}
-                              onChange={e => setNewGoalName(e.target.value)}
-                              className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none border border-amber-100 focus:border-amber-300"
-                            />
-                            <input 
-                              type="number" 
-                              placeholder="Số tiền cần (VNĐ)" 
-                              value={newGoalTarget}
-                              onChange={e => setNewGoalTarget(e.target.value)}
-                              className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none border border-amber-100 focus:border-amber-300"
-                            />
-                            <button onClick={handleCreateGoal} className="w-full bg-amber-500 text-white py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-md">Tạo ngay</button>
-                         </div>
-                       )}
-
-                       <div className="space-y-10">
-                         {savingGoals.map(goal => {
-                           const theme = GOAL_COLORS.find(c => c.id === goal.color) || GOAL_COLORS[0];
-                           const progress = Math.round((goal.savedAmount / goal.targetAmount) * 100);
-                           return (
-                             <div key={goal.id} className={`space-y-6 p-6 rounded-[44px] bg-gradient-to-br ${theme.value} border-2 border-white shadow-lg relative group overflow-hidden transition-all hover:scale-[1.02]`}>
-                                {progress >= 100 && <div className="absolute inset-0 bg-white/20 animate-pulse pointer-events-none"></div>}
-                                <button onClick={() => handleDeleteGoal(goal.id)} className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors z-20"><i className="fa-solid fa-xmark"></i></button>
-                                
-                                <div className="flex items-center gap-5">
-                                  <button 
-                                    onClick={() => handleCycleGoalIcon(goal.id, goal.icon)}
-                                    className="w-16 h-16 rounded-[24px] bg-white flex items-center justify-center text-4xl shadow-md transition-transform active:scale-90 hover:rotate-6"
-                                  >
-                                    {goal.icon}
-                                  </button>
-                                  <div className="flex-1">
-                                    <span className={`text-sm font-black block tracking-tight ${theme.text}`}>{goal.name}</span>
-                                    <div className="flex justify-between items-end mt-1">
-                                      <span className="text-[10px] font-bold text-gray-500">{goal.savedAmount.toLocaleString()}đ / {goal.targetAmount.toLocaleString()}đ</span>
-                                      <span className={`text-[10px] font-black ${theme.text}`}>{progress}%</span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="w-full h-3 bg-white/50 rounded-full overflow-hidden p-0.5 border border-white/40">
-                                  <div className={`h-full rounded-full transition-all duration-1000 ${theme.bar}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
-                                </div>
-
-                                <div className="pt-2 space-y-4">
-                                   <div className="flex flex-wrap gap-2">
-                                      {[10000, 50000, 100000].map(amt => (
-                                        <button 
-                                          key={amt} 
-                                          onClick={() => handleContributeToGoals(goal.id, amt)}
-                                          className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${theme.btn} shadow-sm border border-white hover:bg-white transition-all active:scale-95`}
-                                        >
-                                          +{amt/1000}k
-                                        </button>
-                                      ))}
-                                   </div>
-                                   
-                                   <div className="flex gap-2">
-                                      <div className="relative flex-1">
-                                        <input 
-                                          type="number"
-                                          value={goalContributionInputs[goal.id] || ''}
-                                          onChange={(e) => setGoalContributionInputs(prev => ({ ...prev, [goal.id]: e.target.value }))}
-                                          placeholder="Nhập số khác..."
-                                          className="w-full bg-white/60 p-3 px-4 rounded-2xl outline-none font-bold text-[10px] border border-white/50 focus:border-white transition-all"
-                                        />
-                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-400">đ</span>
-                                      </div>
-                                      <button 
-                                        onClick={() => handleContributeToGoals(goal.id, parseInt(goalContributionInputs[goal.id] || '0'))}
-                                        className={`px-5 rounded-2xl ${theme.accent} text-white text-[9px] font-black uppercase tracking-widest shadow-md transition-all active:scale-95`}
-                                      >
-                                        Góp ngay
-                                      </button>
-                                   </div>
-                                </div>
-                             </div>
-                           );
-                         })}
-                       </div>
-                    </section>
+             {/* Tools Content Area */}
+             <div className="bg-white rounded-[32px] p-6 shadow-xl border border-gray-100 min-h-[300px]">
+                {!selectedTool && (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-300 py-10">
+                    <i className="fa-solid fa-hand-pointer text-4xl mb-4 animate-bounce"></i>
+                    <p className="text-sm font-bold">Chọn một tiện ích nhé!</p>
                   </div>
                 )}
 
                 {selectedTool === 'shopping' && (
-                  <div className="space-y-6 animate-in slide-in-from-right-4 pb-10">
-                    <header className="bg-gradient-to-br from-purple-500 to-indigo-600 p-8 rounded-[48px] text-white shadow-xl relative overflow-hidden">
-                       <div className="relative z-10">
-                          <h3 className="text-xl font-black tracking-tight mb-2">Giỏ Hàng Thông Thái 🛒</h3>
-                          <div className="flex justify-between items-end">
-                             <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Hoàn thành {shoppingProgress}%</span>
-                             <span className="text-xs font-bold">{shoppingList.filter(i => i.completed).length}/{shoppingList.length} món</span>
-                          </div>
-                          <div className="w-full h-2 bg-white/20 rounded-full mt-3 overflow-hidden">
-                             <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${shoppingProgress}%` }}></div>
-                          </div>
-                       </div>
-                    </header>
-                    <div className="flex gap-3">
-                        <input type="text" value={newShoppingName} onChange={e => setNewShoppingName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddShoppingItem()} placeholder="Mây cần mua gì?..." className="flex-1 p-5 bg-white rounded-[24px] outline-none font-bold text-sm border-2 border-transparent focus:border-purple-200 shadow-lg transition-all" />
-                        <button onClick={() => handleAddShoppingItem()} className="w-14 h-14 bg-purple-500 text-white rounded-[20px] flex items-center justify-center text-xl shadow-lg active:scale-90 transition-all"><i className="fa-solid fa-plus"></i></button>
+                  <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                    <h3 className="font-black text-gray-800 text-lg mb-4">Danh Sách Đi Chợ</h3>
+                    
+                    <div className="flex gap-2">
+                       <input 
+                         type="text" 
+                         value={newShoppingName}
+                         onChange={(e) => setNewShoppingName(e.target.value)}
+                         onKeyDown={(e) => e.key === 'Enter' && handleAddShoppingItem()}
+                         placeholder="Cần mua gì nào..."
+                         className="flex-1 bg-gray-50 rounded-xl px-4 py-3 outline-none font-bold text-gray-600 focus:bg-white focus:ring-2 ring-pink-100 transition-all"
+                       />
+                       <button 
+                         onClick={() => handleAddShoppingItem()}
+                         className="bg-pink-500 text-white w-12 rounded-xl flex items-center justify-center shadow-lg active:scale-95"
+                       >
+                         <i className="fa-solid fa-plus"></i>
+                       </button>
                     </div>
-                    <div className="space-y-3">
-                        {shoppingList.map((item, idx) => (
-                           <div key={item.id} className={`bg-white p-5 rounded-[28px] border-2 flex items-center gap-4 transition-all duration-500 group ${item.completed ? 'border-transparent opacity-60 scale-95' : 'border-purple-50 shadow-sm'}`}>
-                              <button onClick={() => handleToggleShoppingItem(item.id, item.completed)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${item.completed ? 'bg-emerald-500 text-white shadow-lg rotate-[360deg]' : 'bg-purple-50 text-purple-200 group-hover:bg-purple-100'}`}>
-                                 <i className={`fa-solid ${item.completed ? 'fa-check' : 'fa-circle'} text-[10px]`}></i>
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                 <p className={`font-black text-sm truncate ${item.completed ? 'line-through text-gray-400 italic' : 'text-gray-700'}`}>{item.name}</p>
-                              </div>
-                              <button onClick={() => handleDeleteShoppingItem(item.id)} className="text-gray-200 hover:text-rose-400 transition-colors p-2"><i className="fa-solid fa-trash-can text-xs"></i></button>
+
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                      {shoppingList.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-transparent hover:border-pink-100 group">
+                           <div className="flex items-center gap-3">
+                             <button onClick={() => handleToggleShoppingItem(item.id, item.completed)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${item.completed ? 'bg-pink-500 border-pink-500 text-white' : 'border-gray-300'}`}>
+                               {item.completed && <i className="fa-solid fa-check text-xs"></i>}
+                             </button>
+                             <span className={`font-bold text-sm ${item.completed ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.name}</span>
                            </div>
-                        ))}
+                           <button onClick={() => handleDeleteShoppingItem(item.id)} className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                             <i className="fa-solid fa-trash"></i>
+                           </button>
+                        </div>
+                      ))}
                     </div>
+
+                    {shoppingList.length > 0 && (
+                      <div className="pt-4 border-t border-gray-100">
+                         <button 
+                           onClick={handleGetShoppingAdvice}
+                           disabled={isAdviceLoading}
+                           className="w-full py-3 bg-purple-50 text-purple-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-purple-100 transition-colors flex items-center justify-center gap-2"
+                         >
+                           {isAdviceLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
+                           Mẹo đi chợ từ AI
+                         </button>
+                         {shoppingAdvice && (
+                           <div className="mt-3 p-4 bg-purple-50 rounded-xl text-sm text-gray-600 leading-relaxed animate-in fade-in">
+                             {shoppingAdvice}
+                           </div>
+                         )}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {selectedTool === 'handbook' && (
-                  <div className="space-y-6 animate-in slide-in-from-right-4 pb-10">
-                    <section className="bg-white p-8 rounded-[48px] border border-gray-100 shadow-xl space-y-8">
-                       <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 bg-blue-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg"><i className="fa-solid fa-book-open"></i></div>
-                          <div><h3 className="text-xl font-black text-gray-800">Sổ Tay Đi Chợ 3D</h3></div>
+                {selectedTool === 'goals' && (
+                  <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                     <div className="flex justify-between items-center">
+                        <h3 className="font-black text-gray-800 text-lg">Mục Tiêu Tiết Kiệm</h3>
+                        <button onClick={() => setIsAddingGoal(!isAddingGoal)} className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors">
+                          <i className={`fa-solid ${isAddingGoal ? 'fa-minus' : 'fa-plus'}`}></i>
+                        </button>
+                     </div>
+
+                     {isAddingGoal && (
+                       <div className="bg-blue-50 p-4 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                          <input type="text" placeholder="Tên mục tiêu (vd: Du lịch)" value={newGoalName} onChange={e => setNewGoalName(e.target.value)} className="w-full p-3 rounded-xl border border-blue-100 outline-none text-sm font-bold" />
+                          <input type="number" placeholder="Số tiền cần (VNĐ)" value={newGoalTarget} onChange={e => setNewGoalTarget(e.target.value)} className="w-full p-3 rounded-xl border border-blue-100 outline-none text-sm font-bold" />
+                          <button onClick={handleCreateGoal} className="w-full bg-blue-500 text-white py-2 rounded-xl font-black text-xs uppercase shadow-md active:scale-95">Tạo Hũ Mới</button>
                        </div>
-                       <div className="grid grid-cols-3 gap-3">
-                          {[
-                            { id: 'prices', name: 'Giá Cả', icon: '💰', color: 'bg-emerald-50 text-emerald-600' },
-                            { id: 'freshness', name: 'Tươi Ngon', icon: '🥦', color: 'bg-orange-50 text-orange-600' },
-                            { id: 'recipes', name: 'Gợi Ý Món', icon: '🥘', color: 'bg-rose-50 text-rose-600' },
-                          ].map(topic => (
-                            <button key={topic.id} onClick={() => handleFetchHandbook(topic.id as any)} className={`${topic.color} p-5 rounded-[32px] flex flex-col items-center gap-2 border-2 border-white shadow-sm hover:scale-105 transition-all`}>
-                               <span className="text-2xl">{topic.icon}</span>
-                               <span className="text-[8px] font-black uppercase tracking-tight">{topic.name}</span>
-                            </button>
-                          ))}
-                       </div>
-                       {handbookContent && (
-                         <div className="bg-blue-50/50 p-6 rounded-[40px] border border-blue-100 max-h-[400px] overflow-y-auto custom-scrollbar text-xs leading-relaxed whitespace-pre-wrap font-bold text-gray-700">
-                            {handbookContent}
-                         </div>
-                       )}
-                    </section>
+                     )}
+
+                     <div className="space-y-4">
+                        {savingGoals.map(goal => {
+                           const goalConfig = GOAL_COLORS.find(c => c.id === goal.color) || GOAL_COLORS[0];
+                           const percent = Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
+                           
+                           return (
+                             <div key={goal.id} className={`border-2 ${goalConfig.border} rounded-[24px] p-5 relative overflow-hidden group hover:shadow-lg transition-all bg-white`}>
+                                {/* Progress Bar Background */}
+                                <div className={`absolute bottom-0 left-0 h-1.5 ${goalConfig.bar}`} style={{width: `${percent}%`}}></div>
+                                
+                                <div className="flex justify-between items-start mb-3">
+                                   <div className="flex gap-3">
+                                      <button onClick={() => handleCycleGoalIcon(goal.id, goal.icon)} className="text-3xl hover:scale-110 transition-transform cursor-pointer">{goal.icon}</button>
+                                      <div>
+                                         <h4 className="font-black text-gray-800">{goal.name}</h4>
+                                         <p className="text-[10px] font-bold text-gray-400">Mục tiêu: {goal.targetAmount.toLocaleString()}đ</p>
+                                      </div>
+                                   </div>
+                                   <button onClick={() => handleDeleteGoal(goal.id)} className="text-gray-300 hover:text-red-400"><i className="fa-solid fa-trash"></i></button>
+                                </div>
+
+                                <div className="flex justify-between items-end mb-4">
+                                   <span className={`text-2xl font-black ${goalConfig.text}`}>{goal.savedAmount.toLocaleString()}đ</span>
+                                   <span className="text-xs font-bold text-gray-400">{Math.round(percent)}%</span>
+                                </div>
+
+                                <div className="flex gap-2">
+                                   <input 
+                                     type="number" 
+                                     placeholder="Thêm tiền..." 
+                                     value={goalContributionInputs[goal.id] || ''}
+                                     onChange={(e) => setGoalContributionInputs(prev => ({...prev, [goal.id]: e.target.value}))}
+                                     className="w-full bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 ring-gray-100"
+                                   />
+                                   <button 
+                                     onClick={() => {
+                                        const amount = parseInt(goalContributionInputs[goal.id]);
+                                        if (!isNaN(amount)) handleContributeToGoals(goal.id, amount);
+                                     }}
+                                     className={`${goalConfig.btn} px-4 rounded-xl font-black text-lg active:scale-90 transition-transform`}
+                                   >
+                                     +
+                                   </button>
+                                </div>
+                             </div>
+                           );
+                        })}
+                     </div>
                   </div>
                 )}
-              </div>
-            )}
+                
+                {selectedTool === 'family_wallet' && (
+                  <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                    <h3 className="font-black text-gray-800 text-lg">Kết Nối Gia Đình 🏠</h3>
+                    
+                    {familyStatus === 'none' && (
+                       <div className="bg-orange-50 p-6 rounded-[24px] text-center border border-orange-100">
+                          <i className="fa-solid fa-heart-circle-plus text-4xl text-orange-400 mb-4"></i>
+                          <p className="text-sm font-bold text-gray-600 mb-4">Kết nối với người thương để cùng quản lý chi tiêu và tích lũy nhé!</p>
+                          
+                          <div className="flex gap-2 mb-6">
+                            <input 
+                              type="email" 
+                              value={partnerEmailInput} 
+                              onChange={e => setPartnerEmailInput(e.target.value)}
+                              placeholder="Email người ấy..." 
+                              className="w-full p-3 rounded-xl border border-orange-200 outline-none font-bold text-sm"
+                            />
+                            <button 
+                              onClick={handleSendFamilyRequest}
+                              disabled={isLinkingLoading}
+                              className="bg-orange-500 text-white px-4 rounded-xl shadow-lg active:scale-95 disabled:opacity-50"
+                            >
+                              <i className="fa-solid fa-paper-plane"></i>
+                            </button>
+                          </div>
+
+                          {pendingRequests.length > 0 && (
+                            <div className="text-left space-y-2">
+                              <p className="text-xs font-black text-gray-400 uppercase">Lời mời đang chờ</p>
+                              {pendingRequests.map(req => (
+                                <div key={req.id} className="bg-white p-3 rounded-xl flex justify-between items-center shadow-sm">
+                                  <div>
+                                    <p className="font-bold text-gray-800 text-sm">{req.profiles?.name || 'Ai đó'}</p>
+                                    <p className="text-[10px] text-gray-400">{req.profiles?.email}</p>
+                                  </div>
+                                  <button onClick={() => handleAcceptRequest(req.id)} className="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold">Đồng ý</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                       </div>
+                    )}
+
+                    {familyStatus === 'pending' && (
+                      <div className="bg-yellow-50 p-6 rounded-[24px] text-center border border-yellow-100">
+                         <i className="fa-solid fa-clock text-4xl text-yellow-400 mb-4 animate-pulse"></i>
+                         <p className="font-bold text-gray-600">Đang chờ người ấy đồng ý nha...</p>
+                         <button onClick={() => setFamilyStatus('none')} className="mt-4 text-xs font-bold text-red-400 hover:underline">Hủy lời mời</button>
+                      </div>
+                    )}
+
+                    {familyStatus === 'connected' && partnerInfo && (
+                      <div className="bg-gradient-to-br from-orange-100 to-amber-100 p-6 rounded-[24px] border border-orange-200 relative overflow-hidden">
+                         <div className="relative z-10 text-center">
+                            <div className="flex justify-center -space-x-4 mb-4">
+                               <div className="w-12 h-12 rounded-full bg-pink-200 border-2 border-white flex items-center justify-center text-xl">👩</div>
+                               <div className="w-12 h-12 rounded-full bg-blue-200 border-2 border-white flex items-center justify-center text-xl">👨</div>
+                            </div>
+                            <h4 className="font-black text-gray-800 text-lg mb-1">Gia Đình Hạnh Phúc</h4>
+                            <p className="text-xs font-bold text-gray-500 mb-6">Đang kết nối với {partnerInfo.name}</p>
+                            
+                            <button onClick={handleUnlink} className="bg-white text-red-500 px-6 py-2 rounded-xl text-xs font-black uppercase shadow-sm hover:bg-red-50">Ngắt kết nối</button>
+                         </div>
+                         <div className="absolute top-0 left-0 w-full h-full bg-white/30 backdrop-blur-3xl -z-0"></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedTool === 'market_handbook' && (
+                  <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                     <h3 className="font-black text-gray-800 text-lg">Cẩm Nang Nội Trợ 📒</h3>
+                     <div className="flex gap-2 overflow-x-auto pb-2">
+                        <button onClick={() => handleFetchHandbook('prices')} className="whitespace-nowrap px-4 py-2 bg-green-50 text-green-600 rounded-full text-xs font-black uppercase hover:bg-green-100">💸 Giá cả</button>
+                        <button onClick={() => handleFetchHandbook('freshness')} className="whitespace-nowrap px-4 py-2 bg-green-50 text-green-600 rounded-full text-xs font-black uppercase hover:bg-green-100">🥬 Chọn đồ tươi</button>
+                        <button onClick={() => handleFetchHandbook('recipes')} className="whitespace-nowrap px-4 py-2 bg-green-50 text-green-600 rounded-full text-xs font-black uppercase hover:bg-green-100">🍳 Công thức</button>
+                     </div>
+
+                     {isHandbookLoading ? (
+                        <div className="py-10 text-center text-gray-400"><i className="fa-solid fa-spinner fa-spin text-2xl"></i></div>
+                     ) : handbookContent ? (
+                        <div className="bg-green-50/50 p-4 rounded-xl border border-green-100">
+                           <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line mb-4">{handbookContent}</div>
+                           {selectedHandbookTopic === 'recipes' && (
+                             <button onClick={handleExtractToCart} className="w-full bg-green-500 text-white py-2 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95">Thêm nguyên liệu vào giỏ 🛒</button>
+                           )}
+                        </div>
+                     ) : (
+                        <p className="text-center text-xs text-gray-400 py-10">Chọn chủ đề để xem nhé!</p>
+                     )}
+                  </div>
+                )}
+             </div>
           </div>
         )}
+
       </main>
 
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} onAddClick={() => setIsFormOpen(true)} />
-      {(isFormOpen || editExpense) && <ExpenseForm onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onClose={() => { setIsFormOpen(false); setEditExpense(null); }} editData={editExpense} />}
+
+      {isFormOpen && (
+        <ExpenseForm 
+          onAdd={handleAddExpense} 
+          onClose={() => setIsFormOpen(false)} 
+        />
+      )}
     </div>
   );
 };
