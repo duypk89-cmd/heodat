@@ -8,47 +8,50 @@ export enum Category {
   OTHER = 'Khác'
 }
 
-export interface CustomCategory {
+export interface User {
   id: string;
+  email: string;
   name: string;
-  icon: string;
-  color: string;
+  password?: string;
 }
 
 export interface Expense {
   id: string;
+  user_id: string;
   amount: number;
-  category: string; // Changed to string to support custom categories
+  category: string;
   note: string;
   date: string;
-  receiptImage?: string;
-  isFamily?: boolean;
-}
-
-export interface Budget {
-  monthly: number;
-  weekly: number;
+  is_family: boolean;
+  created_at?: string;
 }
 
 export interface FoodItem {
   id: string;
+  user_id: string;
   name: string;
   expiryDate: string;
   quantity: string;
+  created_at?: string;
 }
 
 export interface ShoppingItem {
   id: string;
+  user_id: string;
   name: string;
   completed: boolean;
+  created_at?: string;
 }
 
 export interface SavingGoal {
   id: string;
+  user_id: string;
   name: string;
   targetAmount: number;
   savedAmount: number;
   icon: string;
+  color?: string;
+  created_at?: string;
 }
 
 export type AppTab = 'home' | 'history' | 'reports' | 'tools';
