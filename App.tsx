@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { AppTab, Expense, Category, FoodItem, ShoppingItem, WalletMode, SavingGoal, AppTheme, User } from './types';
 import { Navigation } from './components/Navigation';
@@ -11,14 +10,14 @@ import { supabase } from './services/supabase';
 
 const STICKER_POOL = ['🍓', '🎀', '🍭', '🌸', '🧁', '🍦', '💎', '🌙', '🐱', '🦋', '🎈', '🎨'];
 const FOOD_STICKERS = ['🥦', '🥕', '🥩', '🥚', '🥛', '🍎', '🍋', '🍞', '🧀', '🍗', '🍤', '🥣'];
-const GOAL_ICONS = ['🎁', '🏖️', '🏠', '🚗', '📱', '💍', '🎓', '🍱', '🚲', '🎸', '✈️', '💄', '🧸', '🍰', '🐶', '🍕', '💻'];
+const GOAL_ICONS = ['🎁', '🏖️', '🏠', '🚗', '📱', '💍', '🎓', '🍱', '🚲', '🎸', '✈️', '💄', '🧸', '🍰', '🐶', '🍕', '💻', '👠', '👜', '🕶️', '🧵', '📷', '⛺', '🏝️', '💒', '👶', '🏥', '🦷'];
 
 const GOAL_COLORS = [
-  { id: 'pink', name: 'Hồng Đào', value: 'from-pink-100 to-rose-100', border: 'border-pink-200', text: 'text-pink-600', accent: 'bg-pink-500', bar: 'bg-gradient-to-r from-pink-400 to-rose-400', btn: 'bg-pink-200/50 text-pink-700' },
-  { id: 'blue', name: 'Xanh Mây', value: 'from-blue-100 to-cyan-100', border: 'border-blue-200', text: 'text-blue-600', accent: 'bg-blue-500', bar: 'bg-gradient-to-r from-blue-400 to-cyan-400', btn: 'bg-blue-200/50 text-blue-700' },
-  { id: 'mint', name: 'Lá Non', value: 'from-emerald-100 to-teal-100', border: 'border-emerald-200', text: 'text-emerald-600', accent: 'bg-emerald-500', bar: 'bg-gradient-to-r from-emerald-400 to-teal-400', btn: 'bg-emerald-200/50 text-emerald-700' },
-  { id: 'lavender', name: 'Tím Biếc', value: 'from-purple-100 to-indigo-100', border: 'border-purple-200', text: 'text-purple-600', accent: 'bg-purple-500', bar: 'bg-gradient-to-r from-purple-400 to-indigo-400', btn: 'bg-purple-200/50 text-purple-700' },
-  { id: 'amber', name: 'Nắng Vàng', value: 'from-orange-100 to-amber-100', border: 'border-orange-200', text: 'text-orange-600', accent: 'bg-orange-500', bar: 'bg-gradient-to-r from-orange-400 to-amber-500', btn: 'bg-orange-200/50 text-orange-700' },
+  { id: 'pink', name: 'Hồng Đào', value: 'from-pink-100 to-rose-100', border: 'border-pink-200', text: 'text-pink-600', accent: 'bg-pink-500', bar: 'bg-gradient-to-r from-pink-400 to-rose-400', btn: 'bg-pink-200/50 text-pink-700', badge: 'bg-pink-500 text-pink-600' },
+  { id: 'blue', name: 'Xanh Mây', value: 'from-blue-100 to-cyan-100', border: 'border-blue-200', text: 'text-blue-600', accent: 'bg-blue-500', bar: 'bg-gradient-to-r from-blue-400 to-cyan-400', btn: 'bg-blue-200/50 text-blue-700', badge: 'bg-blue-500 text-blue-600' },
+  { id: 'mint', name: 'Lá Non', value: 'from-emerald-100 to-teal-100', border: 'border-emerald-200', text: 'text-emerald-600', accent: 'bg-emerald-500', bar: 'bg-gradient-to-r from-emerald-400 to-teal-400', btn: 'bg-emerald-200/50 text-emerald-700', badge: 'bg-emerald-500 text-emerald-600' },
+  { id: 'lavender', name: 'Tím Biếc', value: 'from-purple-100 to-indigo-100', border: 'border-purple-200', text: 'text-purple-600', accent: 'bg-purple-500', bar: 'bg-gradient-to-r from-purple-400 to-indigo-400', btn: 'bg-purple-200/50 text-purple-700', badge: 'bg-purple-500 text-purple-600' },
+  { id: 'amber', name: 'Nắng Vàng', value: 'from-orange-100 to-amber-100', border: 'border-orange-200', text: 'text-orange-600', accent: 'bg-orange-500', bar: 'bg-gradient-to-r from-orange-400 to-amber-500', btn: 'bg-orange-200/50 text-orange-700', badge: 'bg-orange-500 text-orange-600' },
 ];
 
 const App: React.FC = () => {
@@ -40,7 +39,7 @@ const App: React.FC = () => {
 
   const [appTheme, setAppTheme] = useState<AppTheme>('pink');
   const [showRewardOverlay, setShowRewardOverlay] = useState<string | null>(null);
-  const [showConfetti, setShowConfetti] = useState(false); // New state for Quest effect
+  const [showConfetti, setShowConfetti] = useState(false);
   
   const [isAdviceLoading, setIsAdviceLoading] = useState(false);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
@@ -65,8 +64,9 @@ const App: React.FC = () => {
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [newGoalIcon, setNewGoalIcon] = useState(GOAL_ICONS[0]); // Added state for icon selection
 
-  // Budget States - Now synced with Supabase Profiles
+  // Budget States
   const [weeklyBudget, setWeeklyBudget] = useState<number>(1500000);
   const [familyBudget, setFamilyBudget] = useState<number>(15000000);
 
@@ -77,6 +77,7 @@ const App: React.FC = () => {
   const [newShoppingName, setNewShoppingName] = useState('');
   const [shoppingAdvice, setShoppingAdvice] = useState<string | null>(null);
 
+  // ... (auth functions: handleLogin, handleRegister, handleLogout, effects)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthLoading(true);
@@ -90,21 +91,16 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsAuthLoading(true);
     setAuthError(null);
-    
-    // 1. Sign up user
     const { data: authData, error: authError } = await supabase.auth.signUp({ 
       email: authEmail, 
       password: authPassword, 
       options: { data: { name: authName } } 
     });
-
     if (authError) {
       setAuthError(authError.message);
       setIsAuthLoading(false);
       return;
     }
-
-    // 2. Create Profile immediately
     if (authData.user) {
       const { error: profileError } = await supabase.from('profiles').insert([{
         id: authData.user.id,
@@ -113,16 +109,10 @@ const App: React.FC = () => {
         weekly_budget: 1500000,
         family_budget: 15000000
       }]);
-
-      if (profileError) {
-        console.error("Lỗi tạo profile:", profileError);
-        // Continue anyway as auth was successful, profile might be created by trigger or later
-      }
-      
+      if (profileError) console.error("Lỗi tạo profile:", profileError);
       alert("Đăng ký thành công! Mây có thể đăng nhập ngay.");
       setIsRegistering(false);
     }
-    
     setIsAuthLoading(false);
   };
 
@@ -135,7 +125,6 @@ const App: React.FC = () => {
       setSavingGoals([]);
       setFamilyStatus('none');
       setPartnerInfo(null);
-      // Reset budgets to default on logout
       setWeeklyBudget(1500000);
       setFamilyBudget(15000000);
     }
@@ -164,6 +153,7 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
+  // ... (connection functions: fetchFamilyConnection, handleSendFamilyRequest, handleAcceptRequest, handleUnlink)
   const fetchFamilyConnection = async () => {
     if (!currentUser) return;
     const { data: connectedData } = await supabase
@@ -204,29 +194,18 @@ const App: React.FC = () => {
   const handleSendFamilyRequest = async () => {
     if (!partnerEmailInput.trim() || !currentUser) return;
     setIsLinkingLoading(true);
-
-    const { data: partnerData, error: findError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', partnerEmailInput.trim())
-      .single();
-
+    const { data: partnerData, error: findError } = await supabase.from('profiles').select('id').eq('email', partnerEmailInput.trim()).single();
     if (findError || !partnerData) {
       alert("Không tìm thấy người dùng với email này! Hãy chắc chắn họ đã đăng ký.");
       setIsLinkingLoading(false);
       return;
     }
-
     if (partnerData.id === currentUser.id) {
       alert("Mây không thể tự kết nối với chính mình nha!");
       setIsLinkingLoading(false);
       return;
     }
-
-    const { error: insertError } = await supabase
-      .from('family_links')
-      .insert([{ user_id_1: currentUser.id, user_id_2: partnerData.id, status: 'pending' }]);
-
+    const { error: insertError } = await supabase.from('family_links').insert([{ user_id_1: currentUser.id, user_id_2: partnerData.id, status: 'pending' }]);
     if (insertError) {
       alert("Có lỗi xảy ra hoặc yêu cầu đã tồn tại!");
     } else {
@@ -242,20 +221,14 @@ const App: React.FC = () => {
     if (!error) {
       alert("Chào mừng thành viên mới của gia đình! 🏠");
       fetchFamilyConnection();
-      setTimeout(() => fetchUserData(), 500); // Reload expenses to include family
+      setTimeout(() => fetchUserData(), 500);
     }
   };
 
   const handleUnlink = async () => {
     if (!confirm("Mây có chắc muốn dừng chia sẻ ví không?")) return;
     if (!currentUser) return;
-    
-    const { error } = await supabase
-      .from('family_links')
-      .delete()
-      .eq('status', 'connected')
-      .or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
-
+    const { error } = await supabase.from('family_links').delete().eq('status', 'connected').or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
     if (!error) {
       setPartnerInfo(null);
       setFamilyStatus('none');
@@ -267,39 +240,22 @@ const App: React.FC = () => {
 
   const fetchUserData = async () => {
     if (!currentUser) return;
-    
-    // 1. Fetch Profile for Budgets
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('weekly_budget, family_budget')
-      .eq('id', currentUser.id)
-      .single();
-    
+    const { data: profileData } = await supabase.from('profiles').select('weekly_budget, family_budget').eq('id', currentUser.id).single();
     if (profileData) {
       if (profileData.weekly_budget) setWeeklyBudget(profileData.weekly_budget);
       if (profileData.family_budget) setFamilyBudget(profileData.family_budget);
     }
-
-    // 2. Fetch Expenses
     let userIds = [currentUser.id];
     if (partnerInfo && familyStatus === 'connected') userIds.push(partnerInfo.id);
-
-    const { data: expData } = await supabase
-      .from('expenses')
-      .select('*')
-      .in('user_id', userIds)
-      .order('date', { ascending: false });
+    const { data: expData } = await supabase.from('expenses').select('*').in('user_id', userIds).order('date', { ascending: false });
     if (expData) setExpenses(expData.filter(e => e.user_id === currentUser.id || e.is_family));
-
-    // 3. Fetch Goals
     const { data: goalData } = await supabase.from('saving_goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (goalData) setSavingGoals(goalData);
-    
-    // 4. Fetch Shopping List
     const { data: shopData } = await supabase.from('shopping_list').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
     if (shopData) setShoppingList(shopData);
   };
 
+  // ... (expense functions: handleAddExpense, handleUpdateExpense, handleDeleteExpense)
   const handleAddExpense = async (newExp: any) => {
     if (!currentUser) return;
     const { data, error } = await supabase.from('expenses').insert([{ ...newExp, user_id: currentUser.id, is_family: walletMode === 'family' }]).select();
@@ -321,6 +277,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Goals Logic Updated
   const handleContributeToGoals = async (goalId: string, amount: number, showOverlay = true) => {
     if (!currentUser || amount <= 0) return;
     const goal = savingGoals.find(g => g.id === goalId);
@@ -342,14 +299,15 @@ const App: React.FC = () => {
   const handleCreateGoal = async () => {
     if (!currentUser || !newGoalName || !newGoalTarget) return;
     const randomColor = GOAL_COLORS[Math.floor(Math.random() * GOAL_COLORS.length)].id;
-    const randomIcon = GOAL_ICONS[Math.floor(Math.random() * GOAL_ICONS.length)];
+    // Use selected icon or random if somehow empty (though initialized)
+    const iconToUse = newGoalIcon || GOAL_ICONS[0];
     
     const { data, error } = await supabase.from('saving_goals').insert([{
       user_id: currentUser.id,
       name: newGoalName,
       targetAmount: parseInt(newGoalTarget),
       savedAmount: 0,
-      icon: randomIcon,
+      icon: iconToUse,
       color: randomColor
     }]).select();
 
@@ -358,6 +316,7 @@ const App: React.FC = () => {
       setIsAddingGoal(false);
       setNewGoalName('');
       setNewGoalTarget('');
+      setNewGoalIcon(GOAL_ICONS[0]); // Reset icon
     }
   };
 
@@ -372,17 +331,14 @@ const App: React.FC = () => {
   const handleCycleGoalIcon = async (goalId: string, currentIcon: string) => {
     const idx = GOAL_ICONS.indexOf(currentIcon);
     const nextIcon = GOAL_ICONS[(idx + 1) % GOAL_ICONS.length];
-    
     const { error } = await supabase.from('saving_goals').update({ icon: nextIcon }).eq('id', goalId);
     if (!error) {
       setSavingGoals(prev => prev.map(g => g.id === goalId ? { ...g, icon: nextIcon } : g));
     }
   };
 
-  // Quest Logic
   const handleQuestComplete = async (amount: number) => {
     if (savingGoals.length > 0) {
-      // Logic: Cộng vào Hũ mục tiêu đầu tiên (được coi là Hũ Heo Mây chính)
       const targetGoal = savingGoals[0];
       await handleContributeToGoals(targetGoal.id, amount, false);
       setShowConfetti(true);
@@ -396,6 +352,7 @@ const App: React.FC = () => {
     }
   };
 
+  // ... (shopping list functions)
   const handleAddShoppingItem = async (name?: string) => {
     const itemName = name || newShoppingName.trim();
     if (!currentUser || !itemName) return;
@@ -422,6 +379,7 @@ const App: React.FC = () => {
     if (!error) setShoppingList(prev => prev.filter(item => item.id !== id));
   };
 
+  // ... (Gemini services)
   const handleGetShoppingAdvice = async () => {
     if (shoppingList.length === 0) return;
     setIsAdviceLoading(true);
@@ -449,17 +407,14 @@ const App: React.FC = () => {
     setIsAdviceLoading(false);
   };
 
-  // Budget Update Logic with Supabase Sync
   const handleUpdateBudget = async (type: 'weekly' | 'family', amount: string) => {
      const value = parseInt(amount);
      if (isNaN(value) || value < 0) return;
-     
      if (type === 'weekly') {
        setWeeklyBudget(value);
      } else {
        setFamilyBudget(value);
      }
-
      if (currentUser) {
         const updateData = type === 'weekly' ? { weekly_budget: value } : { family_budget: value };
         const { error } = await supabase.from('profiles').update(updateData).eq('id', currentUser.id);
@@ -467,13 +422,22 @@ const App: React.FC = () => {
      }
   };
 
+  const handleAnalyzeSpending = async () => {
+    const relevantExpenses = expenses.filter(e => walletMode === 'family' ? e.is_family : !e.is_family);
+    const currentBudget = walletMode === 'family' ? familyBudget : weeklyBudget * 4; 
+    setIsAnalyzing(true);
+    const analysis = await analyzeSpending(relevantExpenses.slice(0, 30), currentBudget);
+    setAiAnalysis(analysis);
+    setIsAnalyzing(false);
+  };
+
+  // Memos
   const totalSpentMonth = useMemo(() => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     return expenses.filter(e => e.amount > 0 && (walletMode === 'personal' ? !e.is_family : e.is_family) && new Date(e.date) >= startOfMonth).reduce((sum, e) => sum + e.amount, 0);
   }, [expenses, walletMode]);
 
-  // NEW: Calculate Total Savings from all goals
   const totalSavedAmount = useMemo(() => {
     return savingGoals.reduce((sum, goal) => sum + goal.savedAmount, 0);
   }, [savingGoals]);
@@ -485,17 +449,9 @@ const App: React.FC = () => {
     return expenses.filter(e => !e.is_family && new Date(e.date) >= startOfWeek && e.amount > 0).reduce((sum, e) => sum + e.amount, 0);
   }, [expenses]);
 
-  const shoppingProgress = useMemo(() => {
-    if (shoppingList.length === 0) return 0;
-    const completed = shoppingList.filter(i => i.completed).length;
-    return Math.round((completed / shoppingList.length) * 100);
-  }, [shoppingList]);
-
-  // Group expenses by date for History view
   const historyGrouped = useMemo(() => {
     const groups: Record<string, Expense[]> = {};
     const relevantExpenses = expenses.filter(e => walletMode === 'family' ? e.is_family : !e.is_family);
-    
     relevantExpenses.forEach(exp => {
       const dateKey = new Date(exp.date).toLocaleDateString('vi-VN');
       if (!groups[dateKey]) groups[dateKey] = [];
@@ -504,7 +460,6 @@ const App: React.FC = () => {
     return groups;
   }, [expenses, walletMode]);
 
-  // Report Data Processing
   const categoryData = useMemo(() => {
     const relevantExpenses = expenses.filter(e => walletMode === 'family' ? e.is_family : !e.is_family);
     const data: Record<string, number> = {};
@@ -522,36 +477,22 @@ const App: React.FC = () => {
         d.setDate(d.getDate() - i);
         return d.toLocaleDateString('vi-VN');
     }).reverse();
-
     relevantExpenses.forEach(e => {
         const dateKey = new Date(e.date).toLocaleDateString('vi-VN');
         if (last7Days.includes(dateKey)) {
              data[dateKey] = (data[dateKey] || 0) + e.amount;
         }
     });
-
     return last7Days.map(date => ({ date: date.slice(0, 5), amount: data[date] || 0 }));
   }, [expenses, walletMode]);
 
-  const handleAnalyzeSpending = async () => {
-    const relevantExpenses = expenses.filter(e => walletMode === 'family' ? e.is_family : !e.is_family);
-    const currentBudget = walletMode === 'family' ? familyBudget : weeklyBudget * 4; // Approx month budget for personal if not set
-    setIsAnalyzing(true);
-    const analysis = await analyzeSpending(relevantExpenses.slice(0, 30), currentBudget);
-    setAiAnalysis(analysis);
-    setIsAnalyzing(false);
-  };
-
-  // Streak Calculation
   const streak = useMemo(() => {
     if (expenses.length === 0) return 0;
     const sortedDates = [...new Set(expenses.map(e => new Date(e.date).toDateString()))]
       .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
-    
     let count = 0;
     const today = new Date().toDateString();
     const yesterday = new Date(Date.now() - 86400000).toDateString();
-    
     if (sortedDates[0] === today || sortedDates[0] === yesterday) {
       count = 1;
       let checkDate = new Date(sortedDates[0]);
@@ -567,7 +508,6 @@ const App: React.FC = () => {
     return count;
   }, [expenses]);
 
-  // Level & Mascot Message
   const getMascotMessage = (savings: number) => {
     if (savings < 500000) return "Cố lên Mây ơi, vạn sự khởi đầu nan! 🌱";
     if (savings < 2000000) return "Mây đang làm rất tốt, sắp thành Thợ Săn rồi! 🏹";
@@ -605,7 +545,6 @@ const App: React.FC = () => {
     <div className={`max-w-md mx-auto min-h-screen pb-32 relative ${walletMode === 'family' ? 'bg-[#FFF9F0]' : currentTheme.bg} transition-all duration-700`}>
       {showRewardOverlay && <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-[1000] animate-bounce text-9xl">{showRewardOverlay}</div>}
       
-      {/* Confetti Effect Overlay */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-[2000] overflow-hidden">
           {[...Array(30)].map((_, i) => (
@@ -626,6 +565,7 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Header */}
       <header className="px-6 pt-12 pb-6 flex justify-between items-start sticky top-0 bg-inherit/90 backdrop-blur-md z-40">
         <div>
           <div className="flex items-center gap-2">
@@ -645,13 +585,11 @@ const App: React.FC = () => {
            <button className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:scale-110 transition-transform border border-pink-50">
              🐰
            </button>
-           {/* Mascot Message Bubble */}
            <div className="absolute right-12 top-0 w-48 bg-white p-3 rounded-l-2xl rounded-tr-2xl rounded-br-sm shadow-xl border border-pink-100 animate-in fade-in slide-in-from-right-4">
              <p className="text-[10px] font-bold text-gray-600 leading-tight">
                {getMascotMessage(totalSavedAmount)}
              </p>
            </div>
-           
            <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-2xl shadow-xl p-2 hidden group-hover:block animate-in fade-in slide-in-from-top-2 border border-pink-50 z-50">
              <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 transition-colors">
                <i className="fa-solid fa-right-from-bracket mr-2"></i> Đăng xuất
@@ -660,6 +598,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="px-6 space-y-8">
         {activeTab === 'home' && (
           <div className="space-y-8 animate-in fade-in duration-500">
@@ -671,7 +610,7 @@ const App: React.FC = () => {
                 </div>
             </div>
 
-            {/* Daily Quest Section */}
+            {/* Daily Quest */}
             <div>
               <div className="flex justify-between items-end mb-4">
                  <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
@@ -683,42 +622,15 @@ const App: React.FC = () => {
                    </span>
                  )}
               </div>
-              
               <div className="flex gap-4 overflow-x-auto pb-6 custom-scrollbar snap-x px-1">
                 {[
-                  { 
-                    id: 'coffee', 
-                    title: 'Cai Trà Sữa', 
-                    amount: 30000, 
-                    icon: <div className="relative"><i className="fa-solid fa-glass-water text-blue-400 text-3xl"></i><i className="fa-solid fa-leaf text-green-400 absolute -top-1 -right-2 text-xs"></i></div>, 
-                    color: 'from-orange-400 to-pink-500', 
-                    bg: 'bg-orange-50', 
-                    desc: 'Uống nước lọc cho healthy!' 
-                  },
-                  { 
-                    id: 'change', 
-                    title: 'Góp Tiền Lẻ', 
-                    amount: 5000, 
-                    icon: <i className="fa-solid fa-piggy-bank text-emerald-500 text-3xl"></i>, 
-                    color: 'from-emerald-400 to-teal-500', 
-                    bg: 'bg-emerald-50', 
-                    desc: 'Tích tiểu thành đại nè' 
-                  },
-                  { 
-                    id: 'fine', 
-                    title: 'Phạt Bản Thân', 
-                    amount: 50000, 
-                    icon: <i className="fa-solid fa-bolt text-rose-500 text-3xl"></i>, 
-                    color: 'from-rose-400 to-red-500', 
-                    bg: 'bg-rose-50', 
-                    desc: 'Lần sau không thế nữa!' 
-                  }
+                  { id: 'coffee', title: 'Cai Trà Sữa', amount: 30000, icon: <div className="relative"><i className="fa-solid fa-glass-water text-blue-400 text-3xl"></i><i className="fa-solid fa-leaf text-green-400 absolute -top-1 -right-2 text-xs"></i></div>, color: 'from-orange-400 to-pink-500', bg: 'bg-orange-50', desc: 'Uống nước lọc cho healthy!' },
+                  { id: 'change', title: 'Góp Tiền Lẻ', amount: 5000, icon: <i className="fa-solid fa-piggy-bank text-emerald-500 text-3xl"></i>, color: 'from-emerald-400 to-teal-500', bg: 'bg-emerald-50', desc: 'Tích tiểu thành đại nè' },
+                  { id: 'fine', title: 'Phạt Bản Thân', amount: 50000, icon: <i className="fa-solid fa-bolt text-rose-500 text-3xl"></i>, color: 'from-rose-400 to-red-500', bg: 'bg-rose-50', desc: 'Lần sau không thế nữa!' }
                 ].map(quest => (
                   <div key={quest.id} className="snap-center min-w-[160px] relative group">
-                     {/* Card Body */}
                      <div className="bg-white/60 backdrop-blur-xl p-5 rounded-[32px] border-2 border-white shadow-lg flex flex-col items-center gap-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                         <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${quest.color} bg-opacity-10 flex items-center justify-center shadow-sm border border-white`}>
-                           {/* Render JSX Icon directly */}
                            <div className="bg-white w-10 h-10 rounded-xl flex items-center justify-center shadow-inner">
                               {quest.icon}
                            </div>
@@ -737,14 +649,11 @@ const App: React.FC = () => {
                           <span>Thực hiện</span> <i className="fa-solid fa-arrow-right"></i>
                         </button>
                      </div>
-                     
-                     {/* Decoration */}
                      <div className={`absolute -z-10 inset-4 bg-gradient-to-r ${quest.color} blur-xl opacity-20 group-hover:opacity-40 transition-opacity`}></div>
                   </div>
                 ))}
               </div>
             </div>
-
             <PiggyBank savings={totalSavedAmount} />
           </div>
         )}
@@ -782,9 +691,12 @@ const App: React.FC = () => {
                                 <p className="text-[10px] font-bold text-gray-400">{exp.category}</p>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="flex flex-col items-end gap-1">
                                <p className="font-black text-gray-800 text-sm">-{exp.amount.toLocaleString()}đ</p>
-                               <button onClick={() => handleDeleteExpense(exp.id)} className="text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:underline">Xóa</button>
+                               <div className="flex gap-3">
+                                 <button onClick={() => { setEditExpense(exp); setIsFormOpen(true); }} className="text-[10px] text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity hover:underline font-bold">Sửa</button>
+                                 <button onClick={() => handleDeleteExpense(exp.id)} className="text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:underline font-bold">Xóa</button>
+                               </div>
                             </div>
                           </div>
                         ))}
@@ -796,23 +708,16 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Reports Tab ... (unchanged in logic but included for file completeness) */}
         {activeTab === 'reports' && (
           <div className="animate-in fade-in duration-500 pb-20">
              <h2 className="text-2xl font-black text-gray-800 mb-6">Báo Cáo Chi Tiêu 📊</h2>
-             
-             {/* Chart 1: Categories */}
              <div className="bg-white p-6 rounded-[32px] shadow-lg border border-gray-100 mb-6">
                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Phân bổ chi tiêu</h3>
                <div className="h-64 w-full">
                  <ResponsiveContainer width="100%" height="100%">
                    <PieChart>
-                     <Pie
-                       data={categoryData}
-                       innerRadius={60}
-                       outerRadius={80}
-                       paddingAngle={5}
-                       dataKey="value"
-                     >
+                     <Pie data={categoryData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                        {categoryData.map((entry, index) => (
                          <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name as Category] || '#ccc'} />
                        ))}
@@ -830,8 +735,6 @@ const App: React.FC = () => {
                  ))}
                </div>
              </div>
-
-             {/* Chart 2: Daily Trend */}
              <div className="bg-white p-6 rounded-[32px] shadow-lg border border-gray-100 mb-8">
                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Xu hướng 7 ngày</h3>
                <div className="h-48 w-full">
@@ -845,8 +748,6 @@ const App: React.FC = () => {
                  </ResponsiveContainer>
                </div>
              </div>
-
-             {/* AI Analysis */}
              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-[32px] shadow-xl text-white relative overflow-hidden">
                 <div className="relative z-10">
                    <div className="flex items-center gap-3 mb-4">
@@ -855,72 +756,61 @@ const App: React.FC = () => {
                      </div>
                      <h3 className="font-black text-lg">Góc Nhìn Thỏ Mây</h3>
                    </div>
-                   
                    {isAnalyzing ? (
-                     <div className="py-4 text-center text-sm font-bold opacity-80 animate-pulse">
-                       Đang suy nghĩ... 🤔
-                     </div>
+                     <div className="py-4 text-center text-sm font-bold opacity-80 animate-pulse">Đang suy nghĩ... 🤔</div>
                    ) : aiAnalysis ? (
-                     <div className="text-sm leading-relaxed font-medium bg-white/10 p-4 rounded-2xl backdrop-blur-sm">
-                       {aiAnalysis}
-                     </div>
+                     <div className="text-sm leading-relaxed font-medium bg-white/10 p-4 rounded-2xl backdrop-blur-sm">{aiAnalysis}</div>
                    ) : (
                      <p className="text-sm opacity-80 mb-4">Mây có muốn nghe nhận xét về cách chi tiêu tháng này không?</p>
                    )}
-                   
                    {!isAnalyzing && !aiAnalysis && (
-                     <button 
-                       onClick={handleAnalyzeSpending}
-                       className="w-full bg-white text-indigo-600 font-black py-3 rounded-xl shadow-lg mt-2 active:scale-95 transition-all"
-                     >
-                       Phân Tích Ngay ✨
-                     </button>
+                     <button onClick={handleAnalyzeSpending} className="w-full bg-white text-indigo-600 font-black py-3 rounded-xl shadow-lg mt-2 active:scale-95 transition-all">Phân Tích Ngay ✨</button>
                    )}
                 </div>
-                {/* Decor */}
                 <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-400 rounded-full blur-3xl opacity-30"></div>
                 <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-400 rounded-full blur-3xl opacity-30"></div>
              </div>
           </div>
         )}
 
+        {/* Tools Tab - Modified */}
         {activeTab === 'tools' && (
           <div className="animate-in fade-in duration-500 pb-20">
              <h2 className="text-2xl font-black text-gray-800 mb-6">Tiện Ích 🛠️</h2>
              
-             {/* Tools Navigation */}
+             {!selectedTool && (
              <div className="grid grid-cols-2 gap-4 mb-8">
-               <button 
-                 onClick={() => setSelectedTool('shopping')} 
-                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'shopping' ? 'bg-pink-100 border-pink-300' : 'bg-white border-gray-100 hover:border-pink-200'}`}
-               >
+               <button onClick={() => setSelectedTool('shopping')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'shopping' ? 'bg-pink-100 border-pink-300' : 'bg-white border-gray-100 hover:border-pink-200'}`}>
                  <span className="text-3xl">🛒</span>
                  <span className="text-xs font-black text-gray-600 uppercase">Đi Chợ</span>
                </button>
-               <button 
-                 onClick={() => setSelectedTool('goals')} 
-                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'goals' ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-100 hover:border-blue-200'}`}
-               >
+               <button onClick={() => setSelectedTool('goals')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'goals' ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-100 hover:border-blue-200'}`}>
                  <span className="text-3xl">🎯</span>
                  <span className="text-xs font-black text-gray-600 uppercase">Mục Tiêu</span>
                </button>
-               <button 
-                 onClick={() => setSelectedTool('family_wallet')} 
-                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'family_wallet' ? 'bg-orange-100 border-orange-300' : 'bg-white border-gray-100 hover:border-orange-200'}`}
-               >
+               <button onClick={() => setSelectedTool('family_wallet')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'family_wallet' ? 'bg-orange-100 border-orange-300' : 'bg-white border-gray-100 hover:border-orange-200'}`}>
                  <span className="text-3xl">🏠</span>
                  <span className="text-xs font-black text-gray-600 uppercase">Ví Gia Đình</span>
                </button>
-               <button 
-                 onClick={() => setSelectedTool('market_handbook')} 
-                 className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'market_handbook' ? 'bg-green-100 border-green-300' : 'bg-white border-gray-100 hover:border-green-200'}`}
-               >
+               <button onClick={() => setSelectedTool('budget')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'budget' ? 'bg-emerald-100 border-emerald-300' : 'bg-white border-gray-100 hover:border-emerald-200'}`}>
+                 <span className="text-3xl">💸</span>
+                 <span className="text-xs font-black text-gray-600 uppercase">Ngân Sách</span>
+               </button>
+               <button onClick={() => setSelectedTool('market_handbook')} className={`p-4 rounded-[24px] border-2 transition-all flex flex-col items-center gap-2 ${selectedTool === 'market_handbook' ? 'bg-green-100 border-green-300' : 'bg-white border-gray-100 hover:border-green-200'}`}>
                  <span className="text-3xl">📒</span>
                  <span className="text-xs font-black text-gray-600 uppercase">Cẩm Nang</span>
                </button>
              </div>
+             )}
 
-             {/* Tools Content Area */}
+             {selectedTool && (
+               <div className="mb-4">
+                 <button onClick={() => { setSelectedTool(null); setSelectedHandbookTopic(null); setHandbookContent(null); }} className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-600 transition-colors">
+                  <i className="fa-solid fa-arrow-left"></i> Quay lại
+                </button>
+               </div>
+             )}
+
              <div className="bg-white rounded-[32px] p-6 shadow-xl border border-gray-100 min-h-[300px]">
                 {!selectedTool && (
                   <div className="flex flex-col items-center justify-center h-full text-gray-300 py-10">
@@ -929,38 +819,45 @@ const App: React.FC = () => {
                   </div>
                 )}
 
+                {/* Shopping List - Improved */}
                 {selectedTool === 'shopping' && (
-                  <div className="space-y-4 animate-in slide-in-from-bottom-4">
-                    <h3 className="font-black text-gray-800 text-lg mb-4">Danh Sách Đi Chợ</h3>
+                  <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-between">
+                       <h3 className="font-black text-gray-800 text-lg">Danh Sách Đi Chợ</h3>
+                       <div className="text-[10px] font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
+                          {shoppingList.filter(i => i.completed).length}/{shoppingList.length} món
+                       </div>
+                    </div>
                     
-                    <div className="flex gap-2">
+                    <div className="relative">
                        <input 
                          type="text" 
                          value={newShoppingName}
                          onChange={(e) => setNewShoppingName(e.target.value)}
                          onKeyDown={(e) => e.key === 'Enter' && handleAddShoppingItem()}
-                         placeholder="Cần mua gì nào..."
-                         className="flex-1 bg-gray-50 rounded-xl px-4 py-3 outline-none font-bold text-gray-600 focus:bg-white focus:ring-2 ring-pink-100 transition-all"
+                         placeholder="Thêm món cần mua..."
+                         className="w-full bg-pink-50/50 rounded-2xl pl-12 pr-4 py-4 outline-none font-bold text-gray-600 focus:bg-white focus:ring-2 ring-pink-100 transition-all border border-transparent focus:border-pink-200 shadow-sm"
                        />
+                       <i className="fa-solid fa-cart-plus absolute left-4 top-1/2 -translate-y-1/2 text-pink-400 text-lg"></i>
                        <button 
                          onClick={() => handleAddShoppingItem()}
-                         className="bg-pink-500 text-white w-12 rounded-xl flex items-center justify-center shadow-lg active:scale-95"
+                         className="absolute right-2 top-1/2 -translate-y-1/2 bg-white text-pink-500 w-10 h-10 rounded-xl flex items-center justify-center shadow-md active:scale-95 border border-pink-100"
                        >
                          <i className="fa-solid fa-plus"></i>
                        </button>
                     </div>
 
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar px-1 pb-2">
                       {shoppingList.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-transparent hover:border-pink-100 group">
-                           <div className="flex items-center gap-3">
-                             <button onClick={() => handleToggleShoppingItem(item.id, item.completed)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${item.completed ? 'bg-pink-500 border-pink-500 text-white' : 'border-gray-300'}`}>
+                        <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 group ${item.completed ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-white border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5'}`}>
+                           <div className="flex items-center gap-4 flex-1">
+                             <button onClick={() => handleToggleShoppingItem(item.id, item.completed)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${item.completed ? 'bg-pink-500 border-pink-500 text-white' : 'border-gray-300 hover:border-pink-300'}`}>
                                {item.completed && <i className="fa-solid fa-check text-xs"></i>}
                              </button>
-                             <span className={`font-bold text-sm ${item.completed ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.name}</span>
+                             <span className={`font-bold text-sm transition-all ${item.completed ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.name}</span>
                            </div>
-                           <button onClick={() => handleDeleteShoppingItem(item.id)} className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                             <i className="fa-solid fa-trash"></i>
+                           <button onClick={() => handleDeleteShoppingItem(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100">
+                             <i className="fa-solid fa-trash-can text-sm"></i>
                            </button>
                         </div>
                       ))}
@@ -968,16 +865,12 @@ const App: React.FC = () => {
 
                     {shoppingList.length > 0 && (
                       <div className="pt-4 border-t border-gray-100">
-                         <button 
-                           onClick={handleGetShoppingAdvice}
-                           disabled={isAdviceLoading}
-                           className="w-full py-3 bg-purple-50 text-purple-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-purple-100 transition-colors flex items-center justify-center gap-2"
-                         >
+                         <button onClick={handleGetShoppingAdvice} disabled={isAdviceLoading} className="w-full py-3 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:from-purple-100 hover:to-pink-100 transition-all flex items-center justify-center gap-2 border border-purple-100/50">
                            {isAdviceLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
                            Mẹo đi chợ từ AI
                          </button>
                          {shoppingAdvice && (
-                           <div className="mt-3 p-4 bg-purple-50 rounded-xl text-sm text-gray-600 leading-relaxed animate-in fade-in">
+                           <div className="mt-3 p-4 bg-purple-50 rounded-xl text-sm text-gray-600 leading-relaxed animate-in fade-in border border-purple-100">
                              {shoppingAdvice}
                            </div>
                          )}
@@ -986,65 +879,88 @@ const App: React.FC = () => {
                   </div>
                 )}
 
+                {/* Saving Goals - Improved */}
                 {selectedTool === 'goals' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
                      <div className="flex justify-between items-center">
                         <h3 className="font-black text-gray-800 text-lg">Mục Tiêu Tiết Kiệm</h3>
-                        <button onClick={() => setIsAddingGoal(!isAddingGoal)} className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors">
+                        <button onClick={() => setIsAddingGoal(!isAddingGoal)} className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors shadow-sm">
                           <i className={`fa-solid ${isAddingGoal ? 'fa-minus' : 'fa-plus'}`}></i>
                         </button>
                      </div>
 
                      {isAddingGoal && (
-                       <div className="bg-blue-50 p-4 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
-                          <input type="text" placeholder="Tên mục tiêu (vd: Du lịch)" value={newGoalName} onChange={e => setNewGoalName(e.target.value)} className="w-full p-3 rounded-xl border border-blue-100 outline-none text-sm font-bold" />
-                          <input type="number" placeholder="Số tiền cần (VNĐ)" value={newGoalTarget} onChange={e => setNewGoalTarget(e.target.value)} className="w-full p-3 rounded-xl border border-blue-100 outline-none text-sm font-bold" />
-                          <button onClick={handleCreateGoal} className="w-full bg-blue-500 text-white py-2 rounded-xl font-black text-xs uppercase shadow-md active:scale-95">Tạo Hũ Mới</button>
+                       <div className="bg-blue-50/50 p-5 rounded-[28px] space-y-4 animate-in fade-in slide-in-from-top-2 border border-blue-100">
+                          <input type="text" placeholder="Tên mục tiêu (vd: Du lịch)" value={newGoalName} onChange={e => setNewGoalName(e.target.value)} className="w-full p-4 rounded-2xl border border-blue-100 outline-none text-sm font-bold focus:ring-2 ring-blue-100 transition-all" />
+                          <input type="number" placeholder="Số tiền cần (VNĐ)" value={newGoalTarget} onChange={e => setNewGoalTarget(e.target.value)} className="w-full p-4 rounded-2xl border border-blue-100 outline-none text-sm font-bold focus:ring-2 ring-blue-100 transition-all" />
+                          
+                          {/* Icon Selection */}
+                          <div>
+                            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2 ml-1">Chọn biểu tượng</p>
+                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                              {GOAL_ICONS.map((icon, idx) => (
+                                <button 
+                                  key={idx}
+                                  onClick={() => setNewGoalIcon(icon)}
+                                  className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-lg bg-white border-2 transition-all ${newGoalIcon === icon ? 'border-blue-400 bg-blue-50 shadow-sm scale-110' : 'border-transparent hover:border-blue-200'}`}
+                                >
+                                  {icon}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          <button onClick={handleCreateGoal} className="w-full bg-blue-500 text-white py-3 rounded-2xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all">Tạo Hũ Mới ✨</button>
                        </div>
                      )}
 
-                     <div className="space-y-4">
+                     <div className="space-y-5">
                         {savingGoals.map(goal => {
                            const goalConfig = GOAL_COLORS.find(c => c.id === goal.color) || GOAL_COLORS[0];
                            const percent = Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
                            
                            return (
-                             <div key={goal.id} className={`border-2 ${goalConfig.border} rounded-[24px] p-5 relative overflow-hidden group hover:shadow-lg transition-all bg-white`}>
-                                {/* Progress Bar Background */}
-                                <div className={`absolute bottom-0 left-0 h-1.5 ${goalConfig.bar}`} style={{width: `${percent}%`}}></div>
+                             <div key={goal.id} className={`border-2 ${goalConfig.border} rounded-[32px] p-6 relative overflow-hidden group hover:shadow-xl transition-all bg-white`}>
+                                <div className={`absolute bottom-0 left-0 h-2 ${goalConfig.bar}`} style={{width: `${percent}%`}}></div>
                                 
-                                <div className="flex justify-between items-start mb-3">
-                                   <div className="flex gap-3">
-                                      <button onClick={() => handleCycleGoalIcon(goal.id, goal.icon)} className="text-3xl hover:scale-110 transition-transform cursor-pointer">{goal.icon}</button>
+                                <div className="flex justify-between items-start mb-4">
+                                   <div className="flex gap-4 items-center">
+                                      <div onClick={() => handleCycleGoalIcon(goal.id, goal.icon)} className={`w-14 h-14 rounded-2xl ${goalConfig.badge} bg-opacity-20 flex items-center justify-center text-3xl shadow-sm border border-white cursor-pointer hover:scale-110 transition-transform`}>
+                                        {goal.icon}
+                                      </div>
                                       <div>
-                                         <h4 className="font-black text-gray-800">{goal.name}</h4>
-                                         <p className="text-[10px] font-bold text-gray-400">Mục tiêu: {goal.targetAmount.toLocaleString()}đ</p>
+                                         <h4 className="font-black text-gray-800 text-lg">{goal.name}</h4>
+                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Mục tiêu: {goal.targetAmount.toLocaleString()}đ</p>
                                       </div>
                                    </div>
-                                   <button onClick={() => handleDeleteGoal(goal.id)} className="text-gray-300 hover:text-red-400"><i className="fa-solid fa-trash"></i></button>
+                                   <button onClick={() => handleDeleteGoal(goal.id)} className="w-8 h-8 rounded-full bg-gray-50 text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-all"><i className="fa-solid fa-trash-can text-sm"></i></button>
                                 </div>
 
-                                <div className="flex justify-between items-end mb-4">
-                                   <span className={`text-2xl font-black ${goalConfig.text}`}>{goal.savedAmount.toLocaleString()}đ</span>
-                                   <span className="text-xs font-bold text-gray-400">{Math.round(percent)}%</span>
+                                <div className="flex justify-between items-end mb-6 pl-1">
+                                   <div className="flex flex-col">
+                                      <span className="text-[10px] font-bold text-gray-400 mb-1">Đã tiết kiệm</span>
+                                      <span className={`text-3xl font-black ${goalConfig.text} tracking-tight`}>{goal.savedAmount.toLocaleString()}đ</span>
+                                   </div>
+                                   <div className={`text-xs font-black px-3 py-1 rounded-full ${goalConfig.badge} bg-opacity-20`}>{Math.round(percent)}%</div>
                                 </div>
 
-                                <div className="flex gap-2">
+                                {/* Contribution Input - Improved */}
+                                <div className="flex gap-2 bg-gray-50/80 p-1.5 rounded-2xl border border-gray-100">
                                    <input 
                                      type="number" 
-                                     placeholder="Thêm tiền..." 
+                                     placeholder="Nhập số tiền góp thêm..." 
                                      value={goalContributionInputs[goal.id] || ''}
                                      onChange={(e) => setGoalContributionInputs(prev => ({...prev, [goal.id]: e.target.value}))}
-                                     className="w-full bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 ring-gray-100"
+                                     className="flex-1 bg-white rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 ring-gray-200 transition-all text-gray-700"
                                    />
                                    <button 
                                      onClick={() => {
                                         const amount = parseInt(goalContributionInputs[goal.id]);
                                         if (!isNaN(amount)) handleContributeToGoals(goal.id, amount);
                                      }}
-                                     className={`${goalConfig.btn} px-4 rounded-xl font-black text-lg active:scale-90 transition-transform`}
+                                     className={`${goalConfig.bar} text-white w-12 rounded-xl font-black text-lg active:scale-95 transition-all shadow-md flex items-center justify-center`}
                                    >
-                                     +
+                                     <i className="fa-solid fa-plus"></i>
                                    </button>
                                 </div>
                              </div>
@@ -1054,41 +970,24 @@ const App: React.FC = () => {
                   </div>
                 )}
                 
+                {/* Family Wallet, Budget, Handbook sections are similar but kept for context ... */}
                 {selectedTool === 'family_wallet' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
                     <h3 className="font-black text-gray-800 text-lg">Kết Nối Gia Đình 🏠</h3>
-                    
                     {familyStatus === 'none' && (
                        <div className="bg-orange-50 p-6 rounded-[24px] text-center border border-orange-100">
                           <i className="fa-solid fa-heart-circle-plus text-4xl text-orange-400 mb-4"></i>
                           <p className="text-sm font-bold text-gray-600 mb-4">Kết nối với người thương để cùng quản lý chi tiêu và tích lũy nhé!</p>
-                          
                           <div className="flex gap-2 mb-6">
-                            <input 
-                              type="email" 
-                              value={partnerEmailInput} 
-                              onChange={e => setPartnerEmailInput(e.target.value)}
-                              placeholder="Email người ấy..." 
-                              className="w-full p-3 rounded-xl border border-orange-200 outline-none font-bold text-sm"
-                            />
-                            <button 
-                              onClick={handleSendFamilyRequest}
-                              disabled={isLinkingLoading}
-                              className="bg-orange-500 text-white px-4 rounded-xl shadow-lg active:scale-95 disabled:opacity-50"
-                            >
-                              <i className="fa-solid fa-paper-plane"></i>
-                            </button>
+                            <input type="email" value={partnerEmailInput} onChange={e => setPartnerEmailInput(e.target.value)} placeholder="Email người ấy..." className="w-full p-3 rounded-xl border border-orange-200 outline-none font-bold text-sm" />
+                            <button onClick={handleSendFamilyRequest} disabled={isLinkingLoading} className="bg-orange-500 text-white px-4 rounded-xl shadow-lg active:scale-95 disabled:opacity-50"><i className="fa-solid fa-paper-plane"></i></button>
                           </div>
-
                           {pendingRequests.length > 0 && (
                             <div className="text-left space-y-2">
                               <p className="text-xs font-black text-gray-400 uppercase">Lời mời đang chờ</p>
                               {pendingRequests.map(req => (
                                 <div key={req.id} className="bg-white p-3 rounded-xl flex justify-between items-center shadow-sm">
-                                  <div>
-                                    <p className="font-bold text-gray-800 text-sm">{req.profiles?.name || 'Ai đó'}</p>
-                                    <p className="text-[10px] text-gray-400">{req.profiles?.email}</p>
-                                  </div>
+                                  <div><p className="font-bold text-gray-800 text-sm">{req.profiles?.name || 'Ai đó'}</p><p className="text-[10px] text-gray-400">{req.profiles?.email}</p></div>
                                   <button onClick={() => handleAcceptRequest(req.id)} className="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold">Đồng ý</button>
                                 </div>
                               ))}
@@ -1096,7 +995,6 @@ const App: React.FC = () => {
                           )}
                        </div>
                     )}
-
                     {familyStatus === 'pending' && (
                       <div className="bg-yellow-50 p-6 rounded-[24px] text-center border border-yellow-100">
                          <i className="fa-solid fa-clock text-4xl text-yellow-400 mb-4 animate-pulse"></i>
@@ -1104,7 +1002,6 @@ const App: React.FC = () => {
                          <button onClick={() => setFamilyStatus('none')} className="mt-4 text-xs font-bold text-red-400 hover:underline">Hủy lời mời</button>
                       </div>
                     )}
-
                     {familyStatus === 'connected' && partnerInfo && (
                       <div className="bg-gradient-to-br from-orange-100 to-amber-100 p-6 rounded-[24px] border border-orange-200 relative overflow-hidden">
                          <div className="relative z-10 text-center">
@@ -1114,7 +1011,6 @@ const App: React.FC = () => {
                             </div>
                             <h4 className="font-black text-gray-800 text-lg mb-1">Gia Đình Hạnh Phúc</h4>
                             <p className="text-xs font-bold text-gray-500 mb-6">Đang kết nối với {partnerInfo.name}</p>
-                            
                             <button onClick={handleUnlink} className="bg-white text-red-500 px-6 py-2 rounded-xl text-xs font-black uppercase shadow-sm hover:bg-red-50">Ngắt kết nối</button>
                          </div>
                          <div className="absolute top-0 left-0 w-full h-full bg-white/30 backdrop-blur-3xl -z-0"></div>
@@ -1122,7 +1018,37 @@ const App: React.FC = () => {
                     )}
                   </div>
                 )}
+                
+                {/* Budget Tool */}
+                {selectedTool === 'budget' && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4">
+                    <section className="bg-white space-y-8">
+                       <div className="flex items-center gap-4 mb-6">
+                          <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg"><i className="fa-solid fa-sack-dollar"></i></div>
+                          <div><h3 className="text-lg font-black text-gray-800">Cài Đặt Ngân Sách</h3></div>
+                       </div>
+                       <div className="space-y-6">
+                          <div>
+                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Ngân sách tuần (Cá nhân)</label>
+                             <div className="relative">
+                                <input type="number" value={weeklyBudget} onChange={(e) => handleUpdateBudget('weekly', e.target.value)} className="w-full bg-emerald-50 p-5 rounded-[24px] outline-none font-black text-xl text-emerald-800 border-2 border-transparent focus:border-emerald-300 transition-all" />
+                                <span className="absolute right-6 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-400">VNĐ</span>
+                             </div>
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Ngân sách tháng (Gia đình)</label>
+                             <div className="relative">
+                                <input type="number" value={familyBudget} onChange={(e) => handleUpdateBudget('family', e.target.value)} className="w-full bg-orange-50 p-5 rounded-[24px] outline-none font-black text-xl text-orange-800 border-2 border-transparent focus:border-orange-300 transition-all" />
+                                <span className="absolute right-6 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-400">VNĐ</span>
+                             </div>
+                          </div>
+                          <p className="text-[10px] text-gray-400 italic text-center">* Dữ liệu được lưu tự động nha Mây!</p>
+                       </div>
+                    </section>
+                  </div>
+                )}
 
+                {/* Handbook Tool */}
                 {selectedTool === 'market_handbook' && (
                   <div className="space-y-4 animate-in slide-in-from-bottom-4">
                      <h3 className="font-black text-gray-800 text-lg">Cẩm Nang Nội Trợ 📒</h3>
@@ -1131,7 +1057,6 @@ const App: React.FC = () => {
                         <button onClick={() => handleFetchHandbook('freshness')} className="whitespace-nowrap px-4 py-2 bg-green-50 text-green-600 rounded-full text-xs font-black uppercase hover:bg-green-100">🥬 Chọn đồ tươi</button>
                         <button onClick={() => handleFetchHandbook('recipes')} className="whitespace-nowrap px-4 py-2 bg-green-50 text-green-600 rounded-full text-xs font-black uppercase hover:bg-green-100">🍳 Công thức</button>
                      </div>
-
                      {isHandbookLoading ? (
                         <div className="py-10 text-center text-gray-400"><i className="fa-solid fa-spinner fa-spin text-2xl"></i></div>
                      ) : handbookContent ? (
@@ -1149,16 +1074,12 @@ const App: React.FC = () => {
              </div>
           </div>
         )}
-
       </main>
 
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} onAddClick={() => setIsFormOpen(true)} />
+      <Navigation activeTab={activeTab} onTabChange={setActiveTab} onAddClick={() => { setEditExpense(null); setIsFormOpen(true); }} />
 
-      {isFormOpen && (
-        <ExpenseForm 
-          onAdd={handleAddExpense} 
-          onClose={() => setIsFormOpen(false)} 
-        />
+      {(isFormOpen || editExpense) && (
+        <ExpenseForm onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onClose={() => { setIsFormOpen(false); setEditExpense(null); }} editData={editExpense} />
       )}
     </div>
   );
